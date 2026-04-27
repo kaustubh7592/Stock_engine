@@ -1,0 +1,12 @@
+minimum_confidence:
+  short: 0.45
+  medium: 0.50
+  long: 0.55
+penalties:
+  missing_component: 0.08
+  stale_market_data: 0.12
+  stale_filing_data: 0.15
+  severe_conflict: 0.20
+abstain:
+  enabled: true
+  max_severe_conflicts: 1

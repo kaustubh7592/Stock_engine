@@ -1,0 +1,1473 @@
+
+
+--- PAGE 1 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Stage A Detailed Design
+India Equity Research Engine
+Local-first, personal-use, Indian stocks only
+Version 1.0  |  Dated 25 April 2026
+This document defines the final Stage A architecture, data sources, local runtime model, repo 
+blueprint, canonical schemas, operating model, and implementation order for a robust India-
+only stock research engine with a local LLM explanation layer.
+Decision area Stage A answer
+Market scope Indian listed equities only. Daily / end-of-day market layer, 
+with hourly event/news refresh.
+Execution model Local-first on your machine. No mandatory cloud 
+dependency.
+Paid subscriptions None required to start. Optional small-fee MCA access; cloud 
+backup optional.
+Core data strategy Official exchange/regulatory/public sources first; structured 
+filings first; point-in-time storage.
+LLM role Interpret structured snapshots only. The LLM does not 
+compute indicators or read raw time series.
+
+
+--- PAGE 2 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Contents
+ 1. Executive summary
+ 2. Scope, goals, non-goals, and assumptions
+ 3. Core design decisions
+ 4. Architecture overview
+ 5. Technology stack
+ 6. Data acquisition and verified source catalog
+ 7. Local data architecture and storage model
+ 8. Canonical schemas
+ 9. Feature engineering design
+ 10. Event and news intelligence layer
+ 11. Signal, scoring, and decision layers
+ 12. Local LLM integration layer
+ 13. Repository blueprint
+ 14. Local operations, scheduling, and compute
+ 15. Data quality, observability, and testing
+ 16. Stage A implementation order
+ 17. Risks, limitations, and mitigations
+ Appendix A. Verified source URL register
+ Appendix B. Example stock_snapshot JSON
+ Appendix C. Suggested local schedules
+
+
+--- PAGE 3 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+1. Executive summary
+Stage A is the final design for a serious, local-first India equity research engine intended for personal use. The 
+engine is designed to ingest official/public Indian market and filing data, normalize everything into a point-in-time 
+warehouse, compute technical, fundamental, governance, macro, derivatives EOD, benchmark-relative, and 
+event/news features, score stocks deterministically across multiple horizons, and then hand only the structured 
+result to a local LLM for explanation.
+The most important architectural choices are: (a) Indian equities only; (b) ISIN as the canonical security key; (c) 
+XBRL-first fundamentals; (d) exchange disclosures before media headlines; (e) local filesystem + Parquet + DuckDB 
+instead of a database-heavy stack; (f) deterministic scoring before LLM narration; and (g) explicit point-in-time 
+fields to prevent future-data leakage in research and backtests.
+Stage A can be built with zero mandatory recurring subscriptions if you remain on public/official sources and local 
+compute. Optional paid items exist, but they are not prerequisites for the first robust version. That makes Stage A 
+the highest-leverage build because it stays powerful while remaining inexpensive and operationally simple.
+What Stage A will deliver
+ Daily research-ready snapshots for Indian stocks in the chosen universe.
+ Technical, fundamental, governance, macro, benchmark-relative, derivatives EOD, and event/news features.
+ Short-term, medium-term, and long-term scores with confidence and conflict handling.
+ A structured recommendation object for research use: bullish / neutral / bearish with abstain support.
+ A local LLM explanation that cites only the structured evidence inside the snapshot.
+ A repo and storage layout that can later grow into Stage B or cloud deployment without redoing the core model.
+What Stage A will not attempt
+ No exchange-licensed real-time public distribution product.
+ No low-latency intraday or tick-data plant.
+ No premium paid news, analyst consensus, or transcript feeds as mandatory dependencies.
+ No personalized investment-advice workflow. Stage A is a research engine, not a suitability engine.
+ No reliance on the LLM for numeric computation, signal generation, or portfolio optimization.
+2. Scope, goals, non-goals, and assumptions
+2.1 Scope
+ Asset class: listed Indian equities. Use NSE and BSE public surfaces, joined primarily through ISIN.
+ Refresh model: daily market and filing batch after close, with optional hourly refresh for event/news inputs.
+ Primary usage: personal research and decision support on a local machine.
+ Primary output: stock_snapshot JSON plus a human-readable explanation.
+2.2 Primary goals
+ Analyze an Indian stock from multiple lenses with one reusable engine.
+ Use free or publicly accessible official sources wherever possible.
+ Be robust and auditable even though the first deployment is local and personal.
+ Make later scale-up easy by preserving strong schemas, lineage, and module boundaries from day one.
+2.3 Working assumptions
+ You are comfortable running Python locally and keeping raw data on local storage.
+ End-of-day analysis is acceptable for Stage A; low-latency live trading is deferred.
+ You are willing to use optional one-off paid access (for example MCA documents) if it materially improves data 
+completeness.
+ GitHub is for code, docs, configs, tests, and small fixtures only - not the historical data lake.
+ AWS is optional and only for backup or convenience; Stage A must remain fully functional without it.
+2.4 Design principles
+ Structured source first: XBRL > CSV/XML > HTML > PDF fallback.
+ Official source first: exchange and regulatory filings before media narratives.
+
+
+--- PAGE 4 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+ Point-in-time by default: every fact must store when it became knowable.
+ Deterministic engine first, LLM second.
+ Small, explicit modules over hidden magic.
+ Local-first storage and compute, cloud-optional later.
+ Personal-use assumptions today, but no design shortcuts that block future hardening.
+3. Core design decisions
+Decision Final Stage A choice
+Security identifier ISIN is canonical. Exchange symbols and BSE scrip codes are 
+aliases, not primary keys.
+Primary market cadence Daily EOD first. Hourly event/news refresh can be layered on 
+top.
+Warehouse choice Parquet + DuckDB for local analytics; do not start with 
+Postgres, Kafka, or Spark.
+Filings strategy Parse exchange XBRL whenever present. Use PDF only as 
+fallback.
+News strategy Treat exchange announcements and official policy releases 
+as highest-trust event sources.
+LLM contract LLM reads stock_snapshot JSON only and outputs strictly 
+validated JSON / markdown explanations.
+Scoring strategy Separate horizons and maintain an abstain state. Do not 
+collapse everything into one opaque number.
+Local runtime Use scheduled batch jobs and incremental refreshes rather 
+than an always-on stream processor.
+Operational stance Raw artifacts are immutable; normalization is versioned; 
+outputs are reproducible.
+These decisions deliberately optimize for correctness, explainability, and manageable local operations. They also 
+avoid the most common early failure mode in personal quant projects: spending energy on infrastructure that is far 
+more complex than the actual data and research problem.
+4. Architecture overview
+The architecture is a modular monolith for Stage A. That means one repo, clear module boundaries, typed 
+interfaces, and a local run model, but without the operational tax of a microservice mesh. Each connector, parser, 
+feature family, and scoring component lives in its own module so it can be replaced later without changing the 
+whole system.
+
+
+--- PAGE 5 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+4.1 High-level system view
+4.2 Component responsibilities
+Component Responsibility
+Source adapters Fetch raw files / feeds / API payloads from NSE, BSE, RBI, MoSPI, 
+NSDL, PIB, ECI, GDELT and optional secondary sources.
+Raw artifact store Store immutable source artifacts with URL, hash, retrieval 
+timestamp, and parser version metadata.
+Parsers Convert raw artifacts into normalized records; prefer structured 
+formats and enrich them with point-in-time fields.
+Warehouse Persist normalized tables in Parquet and query them through 
+DuckDB. This is the local analytical core.
+Feature engine Compute all deterministic features used for signals and scores.
+Signal and scoring engine Turn features into interpretable signals, score them by horizon, 
+and generate abstain / conflict outputs.
+LLM interpreter Turn the structured result into narrative reasoning and risk 
+summary without touching raw data.
+Interfaces Expose CLI commands, a local API, and optionally a small 
+dashboard later.
+4.3 Layered data model
+ Raw / Bronze: immutable source artifacts exactly as downloaded or captured.
+ Normalized / Silver: table-level cleaned records with canonical keys, types, timestamps, and lineage.
+ Snapshot / Gold: feature snapshots, scores, and final stock_snapshot JSON objects.
+4.4 Point-in-time rule
+No record is complete without timing metadata. At minimum, every business fact should carry as many of the 
+following as make sense: trade_date, period_end, filing_date, available_at, as_of_date, retrieved_at, source, 
+source_url, document_hash, restated_flag, and parser_version. This is critical for honest research, because 
+quarterly results become usable when they are filed, not when the quarter ended.
+5. Technology stack
+Stage A should intentionally use a small, durable technology set. The stack below is enough to build a powerful 
+local engine without operational bloat.
+Technology Role in Stage A
+Python 3.12 Main application language. Best ecosystem fit for data ingest, 
+
+
+--- PAGE 6 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+quant logic, and local APIs.
+Polars + PyArrow Fast vectorized transforms and efficient Parquet handling.
+DuckDB Local analytical warehouse over Parquet. Ideal for daily research 
+jobs and ad hoc queries.
+httpx + feedparser HTTP downloads, APIs, and RSS ingestion.
+lxml + BeautifulSoup XML / HTML parsing for public disclosure pages and feeds.
+Arelle (or equivalent XBRL parser) Structured financial and governance filing ingestion.
+pdfplumber / OCR fallback only if needed Last-resort extraction for filings that are not available in 
+structured form.
+FastAPI Local API for querying stock snapshots and triggering jobs.
+Typer or Click CLI for daily jobs, backfills, and local analysis runs.
+Ollama or llama.cpp Local LLM serving; keep the model behind a strict schema 
+contract.
+scikit-learn Calibration, ranking baselines, and evaluation helpers.
+pytest + small fixtures Automated tests for parsers, schema rules, and scoring logic.
+GitHub + GitHub Actions Code hosting, CI, docs, and scheduled code quality checks.
+Optional: Docker Compose Consistent local environment; useful but not mandatory.
+Optional: Playwright Fallback browser automation when a public page requires 
+session bootstrapping.
+5.1 Explicitly not required in Stage A
+ No Spark cluster.
+ No Kafka bus.
+ No Kubernetes.
+ No mandatory Postgres instance.
+ No paid hosted LLM API.
+ No exchange-licensed low-latency feed plant.
+6. Data acquisition and verified source catalog
+This section answers the operational questions directly: from where to fetch the data, how to fetch it, which 
+surfaces are public, which ones are optional, and where paid access may appear later. The Stage A rule is simple: 
+use official/public surfaces first, keep the raw artifacts, and only scrape HTML when no structured file or feed 
+exists.
+6.1 Cost and subscription matrix
+Category Stage A decision
+Mandatory recurring paid subscriptions None for Stage A.
+Optional small-fee item MCA View Public Documents when exchange filings are 
+incomplete or the original company filing is required.
+Optional cloud spend None required. AWS only for backup / convenience if you 
+choose to use it.
+Optional external news API Not required. GDELT plus official RSS sources are enough to 
+start.
+Deferred paid data Broker APIs, premium news, transcripts, analyst consensus, 
+real-time options greeks, exchange redistribution licenses.
+6.2 Source trust hierarchy
+1. Exchange structured filings and downloadable reports.
+2. Exchange corporate announcement / action pages and RSS feeds.
+3. Official Indian macro and policy sources (RBI, MoSPI, NSDL, PIB, Budget, ECI).
+4. Open event APIs for global and geopolitical context (GDELT).
+5. Optional media article-text APIs for enrichment only, never as the primary truth source.
+6.3 Mandatory Stage A source register
+Code Source Primary use Fetch mode Cost Cadence
+S01 NSE EQUITY_L master Universe / mapping Direct CSV download Free / public Daily or weekly
+S02 BSE List of Securities BSE mapping / aliases HTML page parse / Free / public Daily or weekly
+
+
+--- PAGE 7 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+download
+S03 Nifty 500 constituent 
+CSV
+Initial universe seed Direct CSV download Free / public Daily or weekly
+S04 NSE All Reports (CM) EOD prices / market 
+reports
+Report download Free / public Daily
+S05 BSE EQ report 
+downloads
+EOD cross-check / 
+supplement
+Report download Free / public Daily
+S06 NSE announcements 
++ RSS
+Company events Web page + RSS Free / public Hourly + daily archive
+S07 NSE corporate 
+actions + RSS
+Dividends / splits / 
+rights
+Web page + RSS Free / public Hourly + daily archive
+S08 NSE annual reports Annual report 
+documents
+Web page / 
+document download
+Free / public Quarterly / annual
+S09 NSE corporate 
+filings / integrated 
+filing
+XBRL and filing 
+discovery
+Web page / 
+document discovery
+Free / public Daily
+S10 BSE corporates + 
+XBRL details
+Results / 
+shareholding / 
+governance
+Web page / XBRL 
+page
+Free / public Daily
+S11 MCA portal (optional) Original company 
+docs
+Portal access Fee-based occasional 
+use
+Ad hoc
+S12 NSE All Reports - 
+Derivatives
+OI / settlement / F&O 
+context
+Report download Free / public Daily
+S13 NSE industry 
+classification + Nifty 
+reports
+Peer groups / 
+benchmarks
+Web page + report 
+download
+Public for reference Monthly / ad hoc
+Code Source Primary use Fetch mode Cost Cadence
+S14 RBI DBIE Rates / yields / macro 
+series
+Web / data query / 
+download
+Free / public Daily / monthly
+S15 RBI RSS and press 
+releases
+Policy event feed RSS + page fetch Free / public Hourly
+S16 MoSPI latest releases CPI / IIP / macro 
+releases
+Web page + 
+document download
+Free / public Release-driven
+S17 NSDL FPI reports FPI flow context Web page / report 
+download
+Free / public Daily / monthly
+S18 PIB RSS Government policy 
+and ministry events
+RSS Free / public Hourly
+S19 India Budget site Budget documents 
+and fiscal events
+Document download Free / public Annual / event-driven
+S20 ECI site / results 
+pages
+Election event 
+context
+Web page Free / public Event-driven
+S21 GDELT DOC / GEO Global news and 
+geopolitics
+Open API Free / public Hourly
+S22 Guardian Open 
+Platform (optional)
+Article text 
+enrichment
+Open API Free for non-
+commercial 
+developer usage
+Hourly / quota-based
+S23 FRED API (optional) Global shock proxies 
+such as Brent
+Open API Free with key Daily
+S24 data.gov.in APIs 
+(optional)
+Supplementary 
+official APIs
+Open API Free with key Dataset-dependent
+6.4 Exact fetch design by source family
+Universe and security master
+ S01 - Pull NSE EQUITY_L.csv directly and store it raw before parsing.
+ S02 - Pull BSE List of Securities and maintain BSE scrip code aliases.
+ S03 - Pull Nifty 500 constituents to seed the first universe and benchmark memberships.
+ Join all mappings by ISIN. Symbols remain aliases, not the primary key.
+EOD market data
+ S04 - Use NSE All Reports as the primary source for daily price / volume / market activity and related cash-market report 
+files.
+ S05 - Use BSE report downloads as a secondary source for cross-checks and BSE-specific supplementing.
+ Persist both adjusted and unadjusted forms where possible; corporate-action adjustment should be explicit and 
+reproducible.
+
+
+--- PAGE 8 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Corporate actions and announcements
+ S06 / S07 - Poll RSS feeds for fast discovery and then fetch the linked details / attachments from the full page.
+ Treat exchange disclosures as higher trust than media summaries.
+ Store title, timestamps, attachment links, exchange dissemination time if available, and content hash for attachments.
+Fundamentals and governance
+ S09 / S10 - Discover filings through exchange filing pages and integrated filing surfaces.
+ Try XBRL first. If XBRL exists, do not make PDF the primary parser.
+ Use PDFs only for fallback extraction or for qualitative sections such as risk factors in annual reports.
+ Use S11 only when the exchange surface is incomplete or the original MCA filing is specifically needed.
+Derivatives EOD
+ S12 - Download daily derivatives reports after close for settlement prices, OI, contract master, category-wise turnover, 
+and related F&O context.
+ Do not build live option chain logic into Stage A. Keep this layer end-of-day and universe-aware.
+Macro and flows
+ S14 - Pull time-series and publications from RBI DBIE as the primary macro backbone.
+ S15 / S16 / S17 - Add RBI policy releases, MoSPI macro releases, and NSDL FPI reports for event and flow overlays.
+Event and geopolitical context
+ S18 / S19 / S20 - Capture official Indian policy, budget, and election events through PIB, Budget documents, and ECI.
+ S21 - Use GDELT for global event discovery, geopolitical shocks, and international narrative context.
+ Optional S22 / S23 / S24 should remain secondary enrichers, not required dependencies.
+6.5 Universal connector contract
+discover() -> list[SourceObject]
+download(source_object) -> RawArtifact
+validate(raw_artifact) -> ValidationResult
+store_raw(raw_artifact) -> RawArtifactRecord
+parse(raw_artifact) -> list[NormalizedRecord]
+normalize(records) -> CanonicalTableRows
+upsert(rows) -> WarehouseWriteResult
+Every connector follows the same flow: discover what is available, download the raw artifact, validate and hash it, 
+store it immutably, parse it, normalize it, and then write the canonical rows. This keeps the ingestion layer 
+consistent and testable.
+7. Local data architecture and storage model
+For Stage A, the cleanest storage stack is raw files on local disk, normalized Parquet datasets, and DuckDB views / 
+tables on top. This gives you fast analytics, simple backups, and easy reproducibility without running a separate 
+database server.
+7.1 Storage layers
+ data/raw - immutable source artifacts exactly as captured.
+ data/silver - normalized Parquet tables partitioned by logical time keys.
+ data/gold - feature snapshots, score snapshots, stock_snapshot JSON files, and explanation outputs.
+ data/cache - API response caches, temporary renders, and parser scratch space.
+7.2 Recommended local directory layout
+data/
+  raw/
+    nse/
+      2026/04/25/
+    bse/
+      2026/04/25/
+    rbi/
+    mospi/
+    nsdl/
+    pib/
+    eci/
+    gdelt/
+  silver/
+
+
+--- PAGE 9 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+    instruments/
+    listings/
+    price_daily/
+    filings/
+    financial_facts/
+    announcements/
+    corporate_actions/
+    macro_series/
+    news_items/
+    event_signals/
+  gold/
+    feature_snapshots/
+    score_snapshots/
+    stock_snapshots/
+    llm_outputs/
+  cache/
+  logs/
+7.3 Raw artifact naming convention
+{source}/{yyyy}/{mm}/{dd}/
+  {logical_name}__retrieved={timestamp_utc}__sha256={hash}.{ext}
+This convention makes the raw store append-only, easy to diff, and easy to recover from if a parser changes later.
+7.4 Partitioning guidance
+ price_daily: partition by year and month of trade_date.
+ financial_facts: partition by filing_year and statement frequency.
+ announcements / corporate actions: partition by event date.
+ macro_series: partition by source and series_code.
+ feature_snapshots / score_snapshots: partition by as_of_date.
+7.5 Why DuckDB is the right Stage A warehouse
+ Excellent local SQL performance on Parquet.
+ Minimal operations overhead.
+ Easy ad hoc research from notebooks or CLI.
+ Natural fit for a single-user analytical workload.
+ Straightforward later migration to cloud object storage patterns if needed.
+8. Canonical schemas
+This section defines the canonical logical schema for Stage A. The goal is not to mirror each source exactly. The goal 
+is to store clean, point-in-time, analysis-ready records that preserve lineage back to the source artifact.
+8.1 Shared conventions
+ All table names use snake_case.
+ IDs are text UUIDs or deterministic composite keys depending on the table.
+ Numeric measures use DECIMAL for stored values unless the field is naturally integer.
+ Timestamps are UTC where possible.
+ Booleans are explicit booleans; do not use 0/1 strings.
+ JSON fields are permitted only for sparse or nested outputs such as evidence arrays and LLM output payloads.
+8.2 Common lineage columns (present on most fact tables)
+Column Type Meaning
+source TEXT Logical source name such as nse, bse, rbi, 
+gdelt.
+source_url TEXT Original URL or source locator used to 
+retrieve the artifact or page.
+retrieved_at TIMESTAMP When the artifact was fetched by the 
+engine.
+available_at TIMESTAMP When the information became knowable to 
+the engine.
+as_of_date DATE Date on which the fact is considered valid 
+for snapshot logic.
+document_hash TEXT Hash of the raw attachment / file / payload 
+where applicable.
+
+
+--- PAGE 10 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+parser_version TEXT Version of the parser that produced the 
+record.
+restated_flag BOOLEAN Whether the fact is a restatement or 
+superseded filing version.
+created_at TIMESTAMP Warehouse insertion timestamp.
+updated_at TIMESTAMP Last warehouse update timestamp.
+8.3 instruments
+Grain: One row per economic instrument / issuer security identity.  |  Primary key: instrument_id
+Column Type Description
+instrument_id TEXT Primary internal identifier.
+isin TEXT Canonical ISIN. Unique where possible.
+legal_name TEXT Company / issuer legal name.
+issuer_name TEXT Issuer display name if different.
+country_code TEXT Usually IN for this project.
+industry_code TEXT Internal or NSE industry code.
+industry_name TEXT Resolved industry name.
+sector_name TEXT Resolved sector name.
+fo_eligible_flag BOOLEAN Whether the security is in F&O at the time.
+active_flag BOOLEAN Whether the security is active in the tracked 
+universe.
+8.4 listings
+Grain: One row per exchange-specific listing / symbol / series.  |  Primary key: listing_id
+Column Type Description
+listing_id TEXT Primary listing identifier.
+instrument_id TEXT FK to instruments.
+exchange_code TEXT NSE or BSE.
+symbol TEXT Exchange symbol.
+series TEXT Series where applicable.
+bse_scrip_code TEXT BSE scrip code if relevant.
+listing_date DATE Listing or effective start date.
+delisting_date DATE End date if inactive.
+face_value DECIMAL Face value at that listing state.
+market_lot INTEGER Market lot / lot size where applicable.
+8.5 price_daily
+Grain: One row per instrument per trade_date.  |  Primary key: (instrument_id, trade_date)
+Column Type Description
+instrument_id TEXT FK to instruments.
+trade_date DATE Trading date.
+open_price DECIMAL Official open.
+high_price DECIMAL Official high.
+low_price DECIMAL Official low.
+close_price DECIMAL Official close.
+volume BIGINT Total traded quantity.
+traded_value DECIMAL Total traded value if available.
+deliverable_qty BIGINT Deliverable quantity if available.
+deliverable_pct DECIMAL Deliverable percentage.
+adj_close_price DECIMAL Adjusted close generated by your pipeline.
+adjustment_factor DECIMAL Cumulative corporate-action adjustment 
+factor.
+8.6 derivatives_eod
+Grain: One row per derivative contract per trade_date.  |  Primary key: (contract_id, trade_date)
+Column Type Description
+contract_id TEXT Internal contract identifier.
+
+
+--- PAGE 11 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+instrument_id TEXT Underlying instrument if applicable.
+trade_date DATE Trade date.
+segment TEXT FUTSTK / OPTSTK / FUTIDX / OPTIDX etc.
+expiry_date DATE Contract expiry.
+strike_price DECIMAL Option strike where applicable.
+option_type TEXT CE / PE / NULL.
+settlement_price DECIMAL Official daily settlement price.
+open_interest BIGINT Open interest.
+oi_change BIGINT Change in OI if computed.
+contract_volume BIGINT Daily derivative volume.
+8.7 corporate_actions
+Grain: One row per action event.  |  Primary key: corporate_action_id
+Column Type Description
+corporate_action_id TEXT Action identifier.
+instrument_id TEXT FK to instruments.
+action_type TEXT Dividend, split, bonus, rights, buyback, etc.
+ex_date DATE Ex-date.
+record_date DATE Record date.
+book_closure_start DATE Book closure start if provided.
+book_closure_end DATE Book closure end if provided.
+ratio_or_amount TEXT Human-readable ratio or amount.
+face_value_before DECIMAL Face value before event if known.
+face_value_after DECIMAL Face value after event if known.
+8.8 corporate_announcements
+Grain: One row per exchange announcement.  |  Primary key: announcement_id
+Column Type Description
+announcement_id TEXT Announcement identifier.
+instrument_id TEXT FK to instruments where resolved.
+exchange_code TEXT NSE / BSE.
+announced_at TIMESTAMP Dissemination time if available.
+headline TEXT Announcement title.
+category TEXT Normalized category.
+sub_category TEXT Optional normalized subtype.
+summary_text TEXT Short extracted summary if allowed.
+attachment_url TEXT Primary attachment link if present.
+filing_family TEXT Linked filing family when applicable.
+8.9 filings
+Grain: One row per filing document / attachment.  |  Primary key: filing_id
+Column Type Description
+filing_id TEXT Filing identifier.
+instrument_id TEXT FK to instruments.
+exchange_code TEXT NSE / BSE / MCA.
+filing_family TEXT Financial, governance, shareholding, annual 
+report, etc.
+filing_subtype TEXT More specific subtype.
+period_end DATE Reporting period end.
+filing_date DATE Date filed / disseminated.
+document_type TEXT XBRL, PDF, XML, HTML, ZIP, etc.
+document_url TEXT Document locator.
+xbrl_flag BOOLEAN Whether structured XBRL is available.
+supersedes_filing_id TEXT Reference to prior filing if restated.
+8.10 financial_facts
+Grain: One row per normalized reported fact.  |  Primary key: fact_id
+
+
+--- PAGE 12 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Column Type Description
+fact_id TEXT Fact identifier.
+instrument_id TEXT FK to instruments.
+filing_id TEXT FK to filings.
+statement_type TEXT Income statement, balance sheet, cash 
+flow, other.
+concept_name TEXT Canonical concept name.
+taxonomy_concept TEXT Original source taxonomy concept.
+period_end DATE Fact period end.
+period_type TEXT Q, H, FY, TTM, duration, instant.
+consolidated_flag BOOLEAN Consolidated vs standalone.
+unit TEXT INR, shares, percent, etc.
+value_num DECIMAL Numeric value.
+scale TEXT Lakhs / crores / units if source uses scaling.
+8.11 shareholding_pattern
+Grain: One row per instrument per reporting period.  |  Primary key: (instrument_id, period_end, 
+consolidated_flag)
+Column Type Description
+instrument_id TEXT FK to instruments.
+filing_id TEXT FK to filings.
+period_end DATE Reporting period.
+promoter_pct DECIMAL Promoter + promoter group holding 
+percentage.
+public_pct DECIMAL Public holding percentage.
+fii_pct DECIMAL Foreign institutional holding percentage if 
+available.
+dii_pct DECIMAL Domestic institutional holding percentage if 
+available.
+retail_pct DECIMAL Retail / non-institutional percentage if 
+available.
+other_pct DECIMAL Residual or other category percentage.
+share_count BIGINT Total shares if disclosed.
+8.12 pledge_disclosures
+Grain: One row per pledge disclosure event / period.  |  Primary key: pledge_id
+Column Type Description
+pledge_id TEXT Disclosure identifier.
+instrument_id TEXT FK to instruments.
+filing_id TEXT FK to filings.
+period_end DATE Disclosure period.
+promoter_shares BIGINT Promoter-held shares if disclosed.
+pledged_shares BIGINT Number of pledged shares.
+pledged_pct_promoter_holding DECIMAL Pct of promoter holding pledged.
+pledged_pct_total_equity DECIMAL Pct of total equity pledged.
+release_or_creation_flag TEXT Create / release / mixed if derivable.
+8.13 insider_trades
+Grain: One row per insider transaction record.  |  Primary key: insider_trade_id
+Column Type Description
+insider_trade_id TEXT Transaction identifier.
+instrument_id TEXT FK to instruments.
+filing_id TEXT FK to filings.
+insider_name TEXT Name of person / entity.
+insider_category TEXT Promoter / designated person / director / 
+etc.
+transaction_date DATE Trade date.
+transaction_type TEXT Buy, sell, pledge-related, etc.
+quantity BIGINT Transaction quantity.
+
+
+--- PAGE 13 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+price DECIMAL Transaction price if available.
+value_num DECIMAL Transaction value if derivable.
+post_holding BIGINT Post transaction holding if available.
+8.14 governance_events
+Grain: One row per normalized governance event.  |  Primary key: governance_event_id
+Column Type Description
+governance_event_id TEXT Event identifier.
+instrument_id TEXT FK to instruments.
+event_date DATE Event effective date.
+event_type TEXT Auditor resignation, board change, 
+compliance issue, etc.
+severity TEXT Low / medium / high rule-based severity.
+headline TEXT Short normalized headline.
+event_text TEXT Optional extracted summary.
+related_filing_id TEXT Source filing link.
+risk_flag BOOLEAN Whether the event should trigger a risk flag.
+8.15 macro_series
+Grain: One row per series per observation date.  |  Primary key: (series_code, observation_date, vintage_date)
+Column Type Description
+series_code TEXT Internal or source series code.
+series_name TEXT Human-readable series name.
+source_family TEXT RBI, MoSPI, FRED, etc.
+observation_date DATE Measurement period.
+value_num DECIMAL Observed value.
+unit TEXT Percent, INR bn, index points, etc.
+frequency TEXT Daily / weekly / monthly / quarterly / 
+annual.
+vintage_date DATE Publication or real-time vintage date if 
+applicable.
+seasonal_adjustment TEXT SA / NSA / unknown.
+8.16 market_flows
+Grain: One row per date per flow slice.  |  Primary key: (trade_date, flow_type, segment, investor_class)
+Column Type Description
+trade_date DATE Date of flow measure.
+flow_type TEXT FPI flow, DII proxy, category turnover, etc.
+segment TEXT Cash, derivatives, debt, combined, etc.
+investor_class TEXT FII / DII / client category / participant type.
+gross_buy DECIMAL Gross buy value if available.
+gross_sell DECIMAL Gross sell value if available.
+net_flow DECIMAL Net flow.
+notes TEXT Optional source notes.
+8.17 news_items
+Grain: One row per ingested event/news item.  |  Primary key: news_id
+Column Type Description
+news_id TEXT Event / news identifier.
+published_at TIMESTAMP Published or observed time.
+source_name TEXT PIB, RBI, GDELT, NSE, etc.
+source_class TEXT exchange, regulator, government, 
+global_news, media_optional.
+headline TEXT Item headline or title.
+url TEXT Original item URL if available.
+language_code TEXT Detected language.
+geography TEXT India / global / region tag.
+
+
+--- PAGE 14 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+event_type TEXT Macro policy, geopolitical, budget, election, 
+company, etc.
+sentiment_score DECIMAL Normalized tone score.
+novelty_score DECIMAL Deduplicated novelty signal.
+entities_json JSON Resolved companies / sectors / 
+commodities / themes.
+8.18 event_signals
+Grain: One row per stock-linked event interpretation.  |  Primary key: event_signal_id
+Column Type Description
+event_signal_id TEXT Event signal identifier.
+news_id TEXT FK to news_items.
+instrument_id TEXT Nullable if sector-level signal only.
+sector_name TEXT Affected sector if not stock-specific.
+event_date DATE Event date used in scoring.
+horizon TEXT Short / medium / long.
+impact_direction TEXT Positive / negative / mixed / unknown.
+impact_score DECIMAL Signed event impact magnitude.
+confidence DECIMAL Signal confidence.
+exposure_channel TEXT Oil, rates, FX, capex, regulation, demand, 
+governance, etc.
+rationale_code TEXT Rule code used to map event to impact.
+8.19 feature_snapshots
+Grain: One row per feature per stock per as_of_date.  |  Primary key: feature_snapshot_id
+Column Type Description
+feature_snapshot_id TEXT Feature row identifier.
+instrument_id TEXT FK to instruments.
+as_of_date DATE Snapshot date.
+horizon TEXT Short / medium / long / all.
+feature_family TEXT technical, fundamental, governance, macro, 
+event, derivatives, peer.
+feature_name TEXT Canonical feature name.
+value_num DECIMAL Feature value.
+zscore DECIMAL Standardized value if applicable.
+rank_pct DECIMAL Peer-relative percentile if applicable.
+coverage_flag BOOLEAN False if missing / imputed / low quality.
+8.20 score_snapshots
+Grain: One row per stock per as_of_date per horizon.  |  Primary key: (instrument_id, as_of_date, horizon)
+Column Type Description
+instrument_id TEXT FK to instruments.
+as_of_date DATE Snapshot date.
+horizon TEXT Short / medium / long.
+technical_score DECIMAL Technical component score.
+fundamental_score DECIMAL Fundamental component score.
+governance_score DECIMAL Governance / promoter component score.
+macro_score DECIMAL Macro / regime component score.
+event_score DECIMAL Event and news component score.
+derivatives_score DECIMAL Derivatives EOD component score.
+composite_score DECIMAL Final deterministic composite score.
+confidence_score DECIMAL Overall confidence.
+classification TEXT Bullish / neutral / bearish / abstain.
+8.21 stock_snapshots
+Grain: One row per stock per as_of_date.  |  Primary key: (instrument_id, as_of_date)
+Column Type Description
+
+
+--- PAGE 15 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+instrument_id TEXT FK to instruments.
+as_of_date DATE Snapshot date.
+snapshot_version TEXT Schema version of the stock snapshot.
+short_horizon_classification TEXT Short horizon stance.
+medium_horizon_classification TEXT Medium horizon stance.
+long_horizon_classification TEXT Long horizon stance.
+top_positive_drivers_json JSON Top positives.
+top_negative_drivers_json JSON Top negatives.
+risk_flags_json JSON Explicit risk flags.
+snapshot_json_path TEXT Filesystem path to the full JSON artifact.
+8.22 llm_explanations
+Grain: One row per explanation generation.  |  Primary key: explanation_id
+Column Type Description
+explanation_id TEXT Explanation identifier.
+instrument_id TEXT FK to instruments.
+as_of_date DATE Snapshot date consumed by the LLM.
+model_name TEXT Local model used.
+prompt_version TEXT Prompt template version.
+input_hash TEXT Hash of the structured input payload.
+output_json JSON Strict model output payload.
+rendered_markdown TEXT Human-readable rendered explanation.
+safety_flags_json JSON Validation flags and caveats.
+8.23 job_runs
+Grain: One row per pipeline run.  |  Primary key: job_run_id
+Column Type Description
+job_run_id TEXT Run identifier.
+job_name TEXT Pipeline name.
+started_at TIMESTAMP Run start.
+finished_at TIMESTAMP Run end.
+status TEXT success, partial_success, failed.
+records_in BIGINT Input count.
+records_out BIGINT Output count.
+error_count BIGINT Error count.
+warning_count BIGINT Warning count.
+log_path TEXT Path to detailed log.
+8.24 data_quality_issues
+Grain: One row per detected data-quality exception.  |  Primary key: dq_issue_id
+Column Type Description
+dq_issue_id TEXT Issue identifier.
+table_name TEXT Affected canonical table.
+entity_key TEXT Instrument or record key.
+detected_at TIMESTAMP Detection timestamp.
+rule_name TEXT Validation rule name.
+severity TEXT low / medium / high / critical.
+issue_text TEXT Readable issue description.
+resolved_flag BOOLEAN Whether resolved.
+resolution_note TEXT Optional fix note.
+9. Feature engineering design
+Stage A feature engineering should prioritize signal families that are stable, explainable, and well supported by 
+available public data. The best path is not to collect every indicator under the sun. The best path is to compute a 
+smaller number of well-justified features with excellent data quality and clear economic interpretation.
+
+
+--- PAGE 16 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+9.1 Feature families
+Family Stage A content
+Technical Moving averages, slopes, return momentum, RSI, MACD, ATR, 
+Bollinger position, breakout / consolidation signals, volume 
+trend, delivery behavior.
+Fundamental Growth, profitability, valuation, balance-sheet strength, cash-
+flow stability, working-capital behavior, free-cash-flow trend.
+Governance / promoter Promoter holding trend, pledge trend, insider activity, auditor 
+or board event flags, dilution / capital raise flags.
+Benchmark-relative Sector-relative returns, peer-relative valuation, percentile ranks, 
+market-cap and liquidity bucket context.
+Macro Rate regime, inflation regime, liquidity regime, industrial cycle, 
+policy-sensitive sectors.
+Derivatives EOD OI trend, participation shifts, settlement-price context, F&O 
+ban / exposure context.
+Event / news Company announcements, macro policy events, budget and 
+election effects, geopolitical shocks, oil / FX / commodity 
+channel mapping.
+9.2 India-specific features that matter
+ Promoter holding change over 1, 2, and 4 reported periods.
+ Promoter pledge level and change.
+ Insider buy / sell imbalance and concentration.
+ Board meeting calendar proximity and results-event windows.
+ Auditor resignation, qualification, and governance stress flags.
+ QIP / warrants / preferential issue / dilution indicators.
+ Delivery ratio trend and abnormality relative to its own history.
+ Bulk / block deal abnormality and subsequent price reaction context.
+ Rate-sensitive leverage metrics for banks, NBFCs, infra, and utilities.
+ Oil, commodity, export, and FX exposure proxies by sector and stock.
+9.3 Missing-data handling
+ Do not silently fill unavailable structured data with zeros.
+ Carry explicit coverage_flag values into features and scores.
+ Allow missing components to reduce confidence rather than produce fake precision.
+ Use peer-relative ranks only when enough valid peers exist in the group.
+10. Event and news intelligence layer
+The event layer is a first-class part of Stage A because Indian stocks react not only to company fundamentals and 
+price action, but also to corporate disclosures, RBI policy, budgets, elections, oil shocks, FX moves, and geopolitical 
+conflict. This layer translates raw events into structured stock-level impact signals instead of letting the LLM guess 
+from headlines.
+10.1 Event source groups
+ Issuer-specific: NSE / BSE corporate announcements and actions.
+ Indian policy: PIB, RBI, Union Budget documents, ECI event/result pages.
+ Global and geopolitical: GDELT and optional supporting APIs.
+10.2 Event processing flow
+ingest -> deduplicate -> classify -> entity-link -> map to exposure channels
+-> score importance / novelty / polarity / confidence -> emit stock-level event_signals
+10.3 Exposure-channel model
+Exposure channel Typical impacted buckets
+Oil / fuel Airlines, paints, chemicals, logistics, OMC-linked names.
+USD / FX IT exporters, pharma exporters, import-heavy manufacturers, 
+aviation.
+
+
+--- PAGE 17 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Rates / liquidity Banks, NBFCs, infra, real estate, utilities, leveraged industrials.
+Government capex / budget Capital goods, railways, defence, infrastructure, EPC, cement.
+Rural demand / agriculture FMCG, tractors, agrochemicals, two-wheelers, irrigation-linked 
+names.
+Commodity input cost Metals, cement, packaging, auto ancillaries, chemicals.
+Governance / regulation Highly regulated sectors, firms with disclosure or compliance 
+events.
+10.4 Event scoring dimensions
+ Source reliability: exchange and regulator > government > open global news > optional media API.
+ Novelty: whether the item is materially new or a duplicate / commentary echo.
+ Materiality: likely economic importance of the event.
+ Time horizon: short-lived shock vs medium-term policy change vs long-term structural shift.
+ Exposure fit: how strongly the event maps to the stock or its sector.
+ Confidence: certainty of the mapping rule and data quality behind it.
+10.5 Why this layer is superior to raw sentiment
+A raw headline polarity score is too weak for serious stock research. For example, a geopolitical conflict may be 
+"negative" in the abstract, but its real stock impact depends on oil prices, currency, import dependence, regulated 
+pricing, and sector structure. The event layer therefore converts external events into exposure-aware signals 
+before they touch the score.
+11. Signal, scoring, and decision layers
+11.1 Signal generation
+ Signals are deterministic rules over features, not LLM outputs.
+ Every signal should store: name, direction, threshold logic, horizon, confidence, decay, and evidence references.
+ Conflicts are explicit first-class outputs. Example: strong value but weak trend, strong fundamentals but negative 
+governance events.
+11.2 Horizon model
+Horizon Definition Primary drivers
+Short 5-20 trading days Technical, events, derivatives EOD, and 
+near-term announcement context 
+dominate.
+Medium 1-3 months Blend technical, revisions-like proxies, 
+event carryover, and benchmark-relative 
+context.
+Long 6-12 months Fundamental quality, valuation, 
+governance, and structural macro / 
+sector signals dominate.
+11.3 Score model
+ Keep component scores separate: technical, fundamental, governance, macro, event, derivatives, peer-relative.
+ Compute a composite score per horizon through a configuration-driven weighting layer.
+ Maintain a separate confidence_score that is reduced by missing coverage, stale inputs, and unresolved signal 
+conflicts.
+ Support an abstain state when confidence is below threshold or when conflicting evidence is too severe.
+11.4 Decision object
+{
+  "horizon": "short",
+  "classification": "bullish",
+  "confidence": 0.67,
+  "abstain": false,
+  "top_positive_drivers": [...],
+  "top_negative_drivers": [...],
+  "conflicts": [...],
+
+
+--- PAGE 18 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+  "risk_flags": [...]
+}
+This object is the bridge between the deterministic engine and the LLM. It should already contain the actual 
+machine conclusion. The LLM is there to explain, not to invent the decision.
+12. Local LLM integration layer
+The LLM should be treated as an explanation engine, not a pricing engine. Its inputs must be small, typed, and 
+structured. Its outputs must be schema-validated before being shown or stored.
+12.1 Input contract
+ Stock identity and snapshot metadata.
+ Top features and component scores by horizon.
+ Top positive and negative drivers.
+ Conflict matrix and explicit risk flags.
+ Coverage and missing-data notes.
+ Evidence identifiers back to source tables and filings.
+12.2 Output contract
+ Short-term outlook paragraph.
+ Long-term outlook paragraph.
+ Why the model likes / dislikes the stock.
+ What the major risks are.
+ What evidence is conflicting or missing.
+ A restrained language policy: never claim certainty or guarantees.
+12.3 Guardrails
+6. Do not let the LLM read raw OHLCV or raw filings directly.
+7. Do not ask the LLM to calculate indicators, DCFs, or valuation multiples.
+8. Reject outputs that do not match the expected schema.
+9. Log model name, prompt version, input hash, and validation results.
+10. Render the final explanation only after deterministic decision outputs exist.
+12.4 Local model sizing guidance
+Because the model only interprets structured snapshots, Stage A does not require a giant model. A strong 7B-14B 
+instruction model with reliable JSON-following behavior is usually sufficient. If you do not have a GPU, you can still 
+run quantized local models on CPU, but the explanation step will be slower. The core engine itself remains CPU-
+friendly.
+13. Repository blueprint
+The repo should look like a production repo from day one, even if the first deployment is local. That means explicit 
+modules, config separation, tests, fixtures, docs, and GitHub workflows.
+india-equity-engine/
+  README.md
+  LICENSE
+  pyproject.toml
+  poetry.lock               # or uv.lock / requirements files
+  Makefile
+  .env.example
+  .gitignore
+  docker-compose.yml        # optional local services
+  configs/
+    app.yaml
+    logging.yaml
+    schedules.yaml
+    universe.yaml
+    weights/
+      score_weights.yaml
+      confidence_rules.yaml
+    sources/
+      nse.yaml
+      bse.yaml
+
+
+--- PAGE 19 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+      rbi.yaml
+      mospi.yaml
+      nsdl.yaml
+      pib.yaml
+      eci.yaml
+      gdelt.yaml
+    prompts/
+      stock_explainer_system.txt
+      stock_explainer_output_schema.json
+  data/
+    .gitkeep
+  docs/
+    architecture/
+    schemas/
+    runbooks/
+  notebooks/
+    research/
+    parser_debug/
+  scripts/
+    setup_local.sh
+    run_daily.sh
+    run_hourly_events.sh
+    backfill_history.sh
+    rebuild_duckdb.py
+    backup_to_s3_optional.sh
+  src/
+    app/
+      api/
+        main.py
+        routes/
+      cli/
+        main.py
+        commands/
+    core/
+      settings.py
+      logging.py
+      ids.py
+      time_utils.py
+      exceptions.py
+      schemas/
+        contracts.py
+        snapshot_schema.py
+    connectors/
+      base.py
+      nse/
+      bse/
+      rbi/
+      mospi/
+      nsdl/
+      pib/
+      eci/
+      gdelt/
+      guardian_optional/
+      mca_optional/
+    parsers/
+      csv/
+      rss/
+      html/
+      xbrl/
+      pdf_fallback/
+    storage/
+      local_fs.py
+      parquet_store.py
+      duckdb_store.py
+      registry.py
+    models/
+      canonical.py
+      enums.py
+    pipelines/
+      refresh_universe.py
+      ingest_market_eod.py
+      ingest_derivatives_eod.py
+      ingest_disclosures.py
+      ingest_filings.py
+      ingest_macro.py
+      ingest_events.py
+      compute_features.py
+      score_snapshots.py
+      explain_snapshots.py
+    features/
+      technical/
+      fundamentals/
+
+
+--- PAGE 20 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+      governance/
+      macro/
+      derivatives/
+      peer/
+      events/
+    signals/
+      rules/
+      conflict_engine.py
+    scoring/
+      weights.py
+      calibration.py
+      classify.py
+    llm/
+      client.py
+      prompts.py
+      validators.py
+      renderers.py
+    quality/
+      rules.py
+      expectations.py
+      anomaly_checks.py
+    testsupport/
+      fixtures.py
+      sample_payloads.py
+  tests/
+    unit/
+    integration/
+    golden/
+    fixtures/
+  .github/
+    workflows/
+      ci.yml
+      lint_test.yml
+      schema_checks.yml
+      docs_linkcheck.yml
+13.1 Top-level folder purpose
+Path Purpose
+configs/ All source endpoints, schedules, weights, and prompts. Keep 
+operational choices out of code where possible.
+scripts/ Thin entrypoints for daily use, backfills, backups, and rebuilds.
+src/connectors/ Source-specific acquisition logic.
+src/parsers/ Format-specific parsing logic independent of the source 
+connector.
+src/storage/ Raw and normalized storage abstractions.
+src/pipelines/ Business workflows composed from connectors, parsers, stores, 
+and feature modules.
+src/features/ Feature families separated by domain.
+src/signals/ and src/scoring/ Decision logic and scoring aggregation.
+src/llm/ Prompting, schema validation, and rendering logic only.
+tests/ Parser tests, contract tests, golden snapshot tests, and fixture 
+data.
+docs/ Architecture docs, runbooks, schema reference, and operational 
+notes.
+13.2 Git and data hygiene
+ Commit code, docs, configs, small fixtures, and generated schema docs.
+ Do not commit raw market data, large Parquet partitions, model weights, or caches.
+ Use .gitignore aggressively for data/, .venv/, logs/, models/, cache/, and renders/.
+ Use GitHub Actions for CI and quality gates, not as the primary data pipeline.
+14. Local operations, scheduling, and compute
+14.1 Recommended hardware profile
+Profile Recommendation
+Minimum workable 4-6 CPU cores, 16 GB RAM, 512 GB SSD, no GPU if you accept 
+slower LLM explanations.
+Recommended 8+ CPU cores, 32 GB RAM, 1 TB NVMe SSD, optional 12 GB+ 
+VRAM GPU for smoother local LLM usage.
+
+
+--- PAGE 21 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Best personal setup Fast CPU, 32-64 GB RAM, large SSD, and a mid-range GPU if you 
+want rapid local inference and experimentation.
+14.2 Scheduling model
+ Daily after market close: universe sync (if needed), market EOD ingest, derivative EOD ingest, corporate disclosures, 
+filings, feature compute, scoring, LLM explanation.
+ Hourly during waking hours: event/news refresh from RSS and GDELT, then event feature refresh for impacted 
+names.
+ Weekly / weekend: backfills, parser re-runs, warehouse compaction, benchmark refresh, and data-quality reviews.
+14.3 Local execution tools
+ Use cron on Linux/macOS or Task Scheduler on Windows.
+ Optional Docker Compose if you want a reproducible local environment for API + LLM service.
+ Keep a single command entrypoint per major job; avoid hidden notebook-only logic.
+14.4 AWS usage guidance
+AWS is not required for Stage A. If you want to use it, the best early use is encrypted off-site backup of raw and 
+normalized data. Do not make the design depend on AWS free usage because the free-tier rules vary by account 
+age and service. The core system should remain fully functional offline on your local machine.
+14.5 Backup strategy
+ Keep the repo in GitHub.
+ Keep the live data store on local SSD.
+ Mirror raw and normalized data periodically to an external drive or optional object storage.
+ Back up DuckDB and config files together so a full rebuild is reproducible.
+15. Data quality, observability, and testing
+15.1 Data-quality checks
+ Schema validation for every canonical table write.
+ Primary-key uniqueness checks.
+ Range checks for prices, percentages, and ratios.
+ Freshness checks by source and expected cadence.
+ Cross-source sanity checks where duplicates exist (for example symbol / ISIN mapping or market snapshots).
+ Restatement detection and supersession handling for filings.
+15.2 Observability
+ Log every job run to job_runs.
+ Emit warnings into data_quality_issues.
+ Track the number of raw artifacts downloaded, parsed, rejected, and normalized.
+ Track stale-source alerts, missing-field rates, and LLM validation failures.
+ Keep simple local metrics first; add Prometheus / Grafana only later if needed.
+15.3 Test strategy
+ Unit tests for every parser and mapper.
+ Golden tests for canonical output from representative source fixtures.
+ Integration tests for end-to-end pipeline slices.
+ Schema tests for stock_snapshot JSON and LLM output JSON.
+ Backtest regression tests for feature and scoring stability when code changes.
+16. Stage A implementation order
+The build order matters. Start with the smallest set of modules that create a trustworthy base, then expand 
+horizontally.
+11. Bootstrap the repo, config system, raw artifact store, and DuckDB / Parquet abstractions.
+
+
+--- PAGE 22 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+12. Build the security-master pipeline: NSE EQUITY_L, BSE listing aliases, Nifty 500 seed universe.
+13. Build the EOD market pipeline: prices, delivery, market activity, and corporate actions.
+14. Build the announcement pipeline: NSE / BSE announcements and RSS discovery.
+15. Build the filing-discovery and XBRL ingestion layer for fundamentals, shareholding, and governance.
+16. Build macro and flow ingestion from RBI, MoSPI, and NSDL.
+17. Build the event/news layer from PIB, RBI RSS, Budget, ECI, and GDELT.
+18. Implement feature families one by one, starting with technical + governance + core fundamentals.
+19. Implement deterministic signals, scores, conflicts, confidence, and abstain logic.
+20. Implement stock_snapshot JSON and the local LLM explanation layer.
+21. Add local API / CLI convenience commands and polish the operating runbooks.
+16.1 Recommended first live universe
+ Start with Nifty 500 constituents and the liquid F&O names.
+ Add lower-liquidity names later once the data model and parsers are stable.
+ This keeps the first backtests, peer groups, and event mapping cleaner.
+17. Risks, limitations, and mitigations
+Risk Mitigation
+Public page structure changes Prefer structured downloads and RSS. Keep parser fixtures and 
+versioned adapters. Use HTML scraping only when needed.
+Source throttling or anti-bot controls Use respectful cadence, headers, retries, and local caches. 
+Reserve browser automation for fallback only.
+Incomplete or inconsistent filings Use XBRL-first logic, retain raw documents, and allow optional 
+MCA supplementation.
+Future-data leakage in research Enforce available_at and filing_date handling everywhere.
+Overconfidence in scores Separate score from confidence and maintain an abstain state.
+LLM hallucination Never let the LLM compute from raw data. Validate outputs 
+against schema.
+GitHub repo bloat Keep data and model artifacts out of GitHub; use local storage 
+and backups.
+Underpowered local machine Keep batch jobs incremental and use smaller local models or 
+CPU-only inference if needed.
+The main hidden risk in projects like this is not missing one more indicator. It is weak data lineage and timing 
+discipline. If Stage A gets the raw store, point-in-time logic, schemas, and event mapping right, everything else 
+becomes easier to improve later.
+
+
+--- PAGE 23 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Appendix A. Verified source URL register
+The list below is the concrete source register used by this design. It focuses on official/public surfaces and a small 
+number of optional open APIs.
+S01 - NSE EQUITY_L master file
+https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv
+S02 - BSE List of Securities
+https://www.bseindia.com/corporates/List_Scrips.html
+S03 - Nifty 500 constituents
+https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv
+S04 - NSE All Reports (cash market)
+https://www.nseindia.com/all-reports/
+S05 - BSE equity report downloads
+https://www.bseindia.com/static/markets/equity/EQReports/downloads.aspx
+S06a - NSE corporate filings announcements
+https://www.nseindia.com/companies-listing/corporate-filings-announcements
+S06b - NSE announcements RSS
+https://nsearchives.nseindia.com/content/RSS/Online_announcements.xml
+S07a - NSE corporate actions
+https://www.nseindia.com/companies-listing/corporate-filings-actions
+S07b - NSE corporate actions RSS
+https://nsearchives.nseindia.com/content/RSS/Corporate_action.xml
+S08 - NSE annual reports
+https://www.nseindia.com/companies-listing/corporate-filings-annual-reports
+S09a - NSE corporate filings application
+https://www.nseindia.com/companies-listing/corporate-filings-application
+S09b - NSE integrated filing surface
+https://www.nseindia.com/companies-listing/corporate-integrated-filing
+S10a - BSE corporates hub
+https://www.bseindia.com/corporates.html
+S10b - BSE announcements
+https://www.bseindia.com/corporates/ann.html
+S10c - BSE XBRL details
+https://www.bseindia.com/corporates/xbrldetails.aspx
+S10d - BSE XBRL information
+https://www.bseindia.com/static/about/xbrl_info.aspx
+S11 - MCA portal home
+https://www.mca.gov.in/content/mca/global/en/home.html
+S12 - NSE All Reports (derivatives)
+https://www.nseindia.com/all-reports-derivatives
+S13a - NSE industry classification
+https://www.nseindia.com/static/products-services/industry-classification
+S13b - Nifty historical data
+https://www.niftyindices.com/reports/historical-data
+S14 - RBI DBIE
+https://data.rbi.org.in/
+S15 - RBI RSS feeds
+https://www.rbi.org.in/Scripts/rss.aspx
+S16a - MoSPI home
+https://mospi.gov.in/
+S16b - MoSPI latest releases
+https://mospi.gov.in/latest-releases
+S17 - NSDL FPI reports
+https://www.fpi.nsdl.co.in/web/Reports/ReportsListing.aspx
+
+
+--- PAGE 24 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+S18 - PIB RSS feed index
+https://www.pib.gov.in/ViewRss.aspx
+S19 - India Budget official site
+https://www.indiabudget.gov.in/
+S20a - Election Commission of India
+https://www.eci.gov.in/
+S20b - ECI results surface example root
+https://results.eci.gov.in/
+S21a - GDELT project
+https://www.gdeltproject.org/
+S21b - GDELT data and API guidance
+https://www.gdeltproject.org/data.html
+S22 - Guardian Open Platform access
+https://open-platform.theguardian.com/access/
+S23 - FRED API overview
+https://fred.stlouisfed.org/docs/api/fred/overview.html
+S24 - data.gov.in APIs
+https://www.data.gov.in/apis
+R1 - GitHub large files guidance
+https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-
+github
+R2 - GitHub Actions workflows
+https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows
+R3 - AWS Free Tier
+https://aws.amazon.com/free/
+R4 - AWS Free Tier account-era docs
+https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier.html
+
+
+--- PAGE 25 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Appendix B. Example stock_snapshot JSON
+This is the kind of fully structured object the deterministic engine should produce before the LLM is called.
+{
+  "schema_version": "1.0.0",
+  "instrument": {
+    "instrument_id": "INS_123",
+    "isin": "INE000A01011",
+    "name": "Example Industries Ltd",
+    "nse_symbol": "EXAMPLE",
+    "bse_scrip_code": "500000",
+    "sector": "Capital Goods",
+    "industry": "Industrial Machinery"
+  },
+  "snapshot_meta": {
+    "as_of_date": "2026-04-25",
+    "generated_at": "2026-04-25T18:45:00Z",
+    "data_freshness": {
+      "market_eod": "fresh",
+      "filings": "fresh",
+      "macro": "fresh",
+      "events": "fresh"
+    }
+  },
+  "features": {
+    "technical": {
+      "close_vs_ma50": 1.08,
+      "rsi_14": 61.4,
+      "atr_pct": 2.3
+    },
+    "fundamental": {
+      "roe": 18.5,
+      "roic": 15.1,
+      "revenue_cagr_3y": 12.7,
+      "net_debt_to_ebitda": 0.4
+    },
+    "governance": {
+      "promoter_holding_trend": 1,
+      "pledge_pct_total_equity": 0.0,
+      "auditor_risk_flag": false
+    },
+    "macro": {
+      "rate_regime": "neutral",
+      "budget_beneficiary_score": 0.62
+    },
+    "events": {
+      "event_risk_score": 0.18,
+      "event_opportunity_score": 0.41,
+      "top_event_drivers": [
+        "order win announcement",
+        "government capex positive sector narrative"
+      ]
+    }
+  },
+  "signals": [
+    {
+      "name": "ma_trend_bullish",
+      "direction": "positive",
+      "confidence": 0.74,
+      "evidence_ids": ["price_daily:INS_123:2026-04-25"]
+    },
+    {
+      "name": "promoter_quality_supportive",
+      "direction": "positive",
+      "confidence": 0.81,
+      "evidence_ids": ["shareholding_pattern:INS_123:2025-12-31"]
+    }
+  ],
+  "scores": {
+    "short": {
+      "technical": 0.66,
+      "fundamental": 0.58,
+      "governance": 0.71,
+      "macro": 0.52,
+      "events": 0.61,
+      "derivatives": 0.49,
+      "composite": 0.62,
+      "confidence": 0.68,
+      "classification": "bullish"
+    },
+    "long": {
+      "technical": 0.54,
+      "fundamental": 0.70,
+      "governance": 0.76,
+      "macro": 0.57,
+
+
+--- PAGE 26 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+      "events": 0.55,
+      "derivatives": 0.40,
+      "composite": 0.65,
+      "confidence": 0.72,
+      "classification": "bullish"
+    }
+  },
+  "decision": {
+    "primary_horizon": "long",
+    "stance": "buy_candidate",
+    "abstain": false,
+    "key_risks": [
+      "sector order-cycle slowdown",
+      "execution risk on new projects"
+    ],
+    "top_positive_drivers": [
+      "healthy balance sheet",
+      "positive promoter / governance profile",
+      "supportive capex context"
+    ],
+    "top_negative_drivers": [
+      "valuation not deeply cheap",
+      "short-term volatility risk"
+    ]
+  }
+}
+
+
+--- PAGE 27 ---
+India Equity Research Engine - Stage A Design
+Personal-use, local-first design document
+Appendix C. Suggested local schedules
+When Job
+18:10 IST refresh_universe (light check only)
+18:20 IST ingest_market_eod
+18:35 IST ingest_derivatives_eod
+18:50 IST ingest_disclosures
+19:15 IST ingest_filings
+19:45 IST ingest_macro
+20:00 IST compute_features
+20:20 IST score_snapshots
+20:30 IST explain_snapshots
+08:00-23:00 hourly ingest_events (RSS + GDELT + official event sources)
+Saturday backfill_history + compaction + validation review
+These times are recommendations only. In practice, schedule the jobs after the relevant source files and disclosures 
+have become reliably available.

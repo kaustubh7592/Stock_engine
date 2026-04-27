@@ -1,0 +1,19 @@
+app_name: india-equity-engine
+environment: local
+timezone: Asia/Kolkata
+data_root: data
+raw_root: data/raw
+silver_root: data/silver
+gold_root: data/gold
+cache_root: data/cache
+logs_root: data/logs
+warehouse:
+  duckdb_path: data/warehouse/india_equity_engine.duckdb
+  parquet_root: data/silver
+http:
+  timeout_seconds: 30
+  user_agent: "india-equity-engine/0.1 personal research"
+  use_system_cert_store: true
+  ca_bundle:
+pipeline:
+  parser_version: "stage-a-bootstrap-0.1.0"

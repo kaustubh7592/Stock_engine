@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StockExplainerOutput",
+  "type": "object",
+  "required": [
+    "short_term_outlook",
+    "long_term_outlook",
+    "likes",
+    "dislikes",
+    "major_risks",
+    "conflicting_or_missing_evidence"
+  ],
+  "properties": {
+    "short_term_outlook": {"type": "string"},
+    "long_term_outlook": {"type": "string"},
+    "likes": {"type": "array", "items": {"type": "string"}},
+    "dislikes": {"type": "array", "items": {"type": "string"}},
+    "major_risks": {"type": "array", "items": {"type": "string"}},
+    "conflicting_or_missing_evidence": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

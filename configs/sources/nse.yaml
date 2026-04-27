@@ -1,0 +1,55 @@
+sources:
+  - code: S01
+    family: nse
+    name: NSE EQUITY_L master file
+    purpose: Universe and ISIN mapping
+    url: https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv
+    fetch_mode: direct_csv_download
+    cost: free_public
+    cadence: daily_or_weekly
+    enabled: true
+  - code: S03
+    family: nse
+    name: Nifty 500 constituents
+    purpose: Initial universe seed
+    url: https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv
+    fetch_mode: direct_csv_download
+    cost: free_public
+    cadence: daily_or_weekly
+    enabled: true
+  - code: S04
+    family: nse
+    name: NSE All Reports cash market
+    purpose: EOD prices and market reports
+    url: https://www.nseindia.com/all-reports/
+    fetch_mode: report_download
+    cost: free_public
+    cadence: daily
+    enabled: true
+  - code: S06
+    family: nse
+    name: NSE announcements RSS
+    purpose: Company announcements
+    url: https://nsearchives.nseindia.com/content/RSS/Online_announcements.xml
+    fetch_mode: rss_plus_page_fetch
+    cost: free_public
+    cadence: hourly_plus_daily_archive
+    enabled: true
+  - code: S07
+    family: nse
+    name: NSE corporate actions RSS
+    purpose: Corporate actions
+    url: https://nsearchives.nseindia.com/content/RSS/Corporate_action.xml
+    fetch_mode: rss_plus_page_fetch
+    cost: free_public
+    cadence: hourly_plus_daily_archive
+    enabled: true
+  - code: S12
+    family: nse
+    name: NSE All Reports derivatives
+    purpose: Derivatives EOD
+    url: https://www.nseindia.com/all-reports-derivatives
+    fetch_mode: report_download
+    cost: free_public
+    cadence: daily
+    enabled: true

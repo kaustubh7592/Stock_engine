@@ -1,0 +1,19 @@
+daily_after_close_ist:
+  refresh_universe: "18:10"
+  ingest_market_eod: "18:20"
+  ingest_derivatives_eod: "18:35"
+  ingest_disclosures: "18:50"
+  ingest_filings: "19:15"
+  ingest_macro: "19:45"
+  compute_features: "20:00"
+  score_snapshots: "20:20"
+  explain_snapshots: "20:30"
+hourly_events_ist:
+  window: "08:00-23:00"
+  job: ingest_events
+weekly:
+  day: Saturday
+  jobs:
+    - backfill_history
+    - compact_warehouse
+    - data_quality_review

@@ -1,0 +1,28 @@
+sources:
+  - code: S02
+    family: bse
+    name: BSE Scrip Master
+    purpose: BSE mapping and aliases
+    url: https://www.bseindia.com/downloads1/Scrip_BSE.zip
+    fetch_mode: scrip_master_zip
+    cost: free_public
+    cadence: daily_or_weekly
+    enabled: true
+  - code: S05
+    family: bse
+    name: BSE equity report downloads
+    purpose: EOD cross-check and supplement
+    url: https://www.bseindia.com/static/markets/equity/EQReports/downloads.aspx
+    fetch_mode: report_download
+    cost: free_public
+    cadence: daily
+    enabled: true
+  - code: S10
+    family: bse
+    name: BSE corporates and XBRL details
+    purpose: Results, shareholding, governance, announcements
+    url: https://www.bseindia.com/corporates/xbrldetails.aspx
+    fetch_mode: web_page_and_xbrl_discovery
+    cost: free_public
+    cadence: daily
+    enabled: true

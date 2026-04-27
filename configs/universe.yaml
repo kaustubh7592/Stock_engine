@@ -1,0 +1,9 @@
+initial_universe:
+  seed: nifty_500
+  include_fo_names: true
+  add_lower_liquidity_names_later: true
+identifiers:
+  canonical_key: isin
+  aliases:
+    - nse_symbol
+    - bse_scrip_code

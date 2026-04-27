@@ -1,0 +1,55 @@
+sources:
+  - code: S14
+    family: rbi
+    name: RBI DBIE
+    purpose: Rates, yields, macro series
+    url: https://data.rbi.org.in/
+    fetch_mode: web_data_query_download
+    cost: free_public
+    cadence: daily_or_monthly
+    enabled: true
+  - code: S15
+    family: rbi
+    name: RBI RSS and press releases
+    purpose: Policy event feed
+    url: https://www.rbi.org.in/Scripts/rss.aspx
+    fetch_mode: rss_plus_page_fetch
+    cost: free_public
+    cadence: hourly
+    enabled: true
+  - code: S16
+    family: mospi
+    name: MoSPI latest releases
+    purpose: CPI, IIP, and macro releases
+    url: https://mospi.gov.in/latest-releases
+    fetch_mode: web_page_document_download
+    cost: free_public
+    cadence: release_driven
+    enabled: true
+  - code: S17
+    family: nsdl
+    name: NSDL FPI reports
+    purpose: FPI flow context
+    url: https://www.fpi.nsdl.co.in/web/Reports/ReportsListing.aspx
+    fetch_mode: web_page_report_download
+    cost: free_public
+    cadence: daily_or_monthly
+    enabled: true
+  - code: S18
+    family: pib
+    name: PIB RSS feed index
+    purpose: Government policy and ministry events
+    url: https://www.pib.gov.in/ViewRss.aspx
+    fetch_mode: rss
+    cost: free_public
+    cadence: hourly
+    enabled: true
+  - code: S21
+    family: gdelt
+    name: GDELT DOC/GEO
+    purpose: Global news and geopolitical context
+    url: https://www.gdeltproject.org/data.html
+    fetch_mode: open_api
+    cost: free_public
+    cadence: hourly
+    enabled: true
