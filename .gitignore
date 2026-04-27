@@ -12,6 +12,10 @@ htmlcov/
 data/*
 !data/.gitkeep
 models/
+!src/india_equity_engine/models/
+!src/india_equity_engine/models/**
+src/india_equity_engine/models/__pycache__/
+src/india_equity_engine/models/**/*.py[cod]
 logs/
 cache/
 renders/

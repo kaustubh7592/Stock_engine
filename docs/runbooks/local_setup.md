@@ -64,3 +64,14 @@ iee ingest-filings
 
 The command stores the raw discovery feed under `data/raw/`, writes `filings/current.parquet`, and refreshes the
 DuckDB `filings` view. XBRL/XML documents are flagged for later structured parsing.
+
+Download selected filing artifacts:
+
+```powershell
+iee download-filings --document-types XBRL,XML,ZIP --limit 25
+```
+
+The command reads the local `filings` view, downloads prioritized structured documents, stores immutable raw
+artifacts and metadata JSON files under `data/raw/`, writes `filing_artifacts/current.parquet`, and refreshes the
+DuckDB `filing_artifacts` view. Use a small limit for first live tests because exchange-hosted files can be slow or
+temporarily unavailable.

@@ -12,6 +12,7 @@ This repo starts with the first implementation step from the design document:
 8. NSE announcements and corporate-actions RSS pipelines for `corporate_announcements` and
    `corporate_actions`.
 9. NSE filing-discovery metadata pipeline for `filings`.
+10. Structured filing artifact downloader for `filing_artifacts`.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -64,3 +65,12 @@ The first filing/XBRL slice builds a metadata inventory in `filings`.
 - Raw feed artifacts are stored immutably and point-in-time lineage fields are preserved.
 - Full XBRL parsing into `financial_facts`, `shareholding_pattern`, and governance tables is layered after this
   discovery foundation.
+
+The second Step 5 slice downloads selected structured documents into immutable raw storage and writes a
+`filing_artifacts` manifest.
+
+- XBRL/XML/ZIP documents are prioritized by default.
+- Raw artifact hashes and metadata sidecar paths are retained.
+- Failed downloads are recorded with error text so live-source instability is visible rather than hidden.
+- The parser for `financial_facts`, `shareholding_pattern`, and governance tables will consume these local raw
+  artifacts in the next Step 5 slice.

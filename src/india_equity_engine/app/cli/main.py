@@ -10,6 +10,7 @@ import typer
 
 from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.settings import Settings
+from india_equity_engine.pipelines.download_filings import download_filings
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
 from india_equity_engine.pipelines.ingest_market_eod import ingest_market_eod
@@ -117,6 +118,27 @@ def ingest_filings_command(
 
     settings = Settings.load(config_dir)
     result = ingest_filings(settings)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("download-filings")
+def download_filings_command(
+    document_types: Annotated[
+        str,
+        typer.Option(
+            help="Comma-separated document types to download, in priority order.",
+        ),
+    ] = "XBRL,XML,ZIP",
+    limit: Annotated[int, typer.Option(help="Maximum number of filings to download.")] = 25,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Download selected filing artifacts, prioritizing structured filings."""
+
+    settings = Settings.load(config_dir)
+    if limit < 1:
+        raise typer.BadParameter("Limit must be at least 1.")
+    parsed_types = tuple(part.strip().upper() for part in document_types.split(",") if part.strip())
+    result = download_filings(settings, document_types=parsed_types, limit=limit)
     typer.echo(result.model_dump_json(indent=2))
 
 

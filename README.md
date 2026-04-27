@@ -72,6 +72,12 @@ Run the filing-discovery pipeline:
 iee ingest-filings
 ```
 
+Download structured filing artifacts for later XBRL parsing:
+
+```powershell
+iee download-filings --document-types XBRL,XML,ZIP --limit 25
+```
+
 The refresh currently builds:
 
 - `instruments`
@@ -81,11 +87,15 @@ The refresh currently builds:
 - `corporate_announcements`
 - `corporate_actions`
 - `filings`
+- `filing_artifacts`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
 
 `filings` is metadata-first: it discovers exchange filing/document URLs and flags XBRL/XML documents for later
 structured parsing.
+
+`filing_artifacts` records local raw downloads, hashes, metadata sidecars, and failed download attempts without
+parsing the financial facts yet.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
