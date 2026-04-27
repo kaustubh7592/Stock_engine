@@ -87,6 +87,16 @@ The command reads successful local `filing_artifacts`, parses XML/XBRL numeric f
 only failed download attempts, run `download-filings` again from a machine that can reach NSE archives before
 parsing.
 
+Parse shareholding pattern rows:
+
+```powershell
+iee parse-shareholding-pattern --limit 5000
+```
+
+The command reads `financial_facts`, maps ownership-related XBRL concepts into `shareholding_pattern`, writes
+`shareholding_pattern/current.parquet`, and refreshes the DuckDB view. It may return no rows if the downloaded
+filings are board-meeting or dividend XBRLs rather than shareholding filings.
+
 ## HTTP proxy troubleshooting
 
 If a direct NSE archive XML URL opens in the browser but the CLI reports connection refused, inspect proxy

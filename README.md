@@ -84,6 +84,12 @@ Parse downloaded XBRL/XML artifacts into financial facts:
 iee parse-financial-facts --limit 25
 ```
 
+Build shareholding pattern rows from parsed facts:
+
+```powershell
+iee parse-shareholding-pattern --limit 5000
+```
+
 The refresh currently builds:
 
 - `instruments`
@@ -95,6 +101,7 @@ The refresh currently builds:
 - `filings`
 - `filing_artifacts`
 - `financial_facts`
+- `shareholding_pattern`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
@@ -107,6 +114,9 @@ parsing the financial facts yet.
 
 `financial_facts` is XBRL/XML-first and extracts numeric reported facts with context period, unit, consolidation
 flag, source URL, hash, and parser lineage.
+
+`shareholding_pattern` maps ownership-related XBRL facts into promoter, public, FII, DII, retail, other, and total
+share-count fields when matching shareholding concepts are available.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 

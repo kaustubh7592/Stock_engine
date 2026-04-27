@@ -14,6 +14,7 @@ This repo starts with the first implementation step from the design document:
 9. NSE filing-discovery metadata pipeline for `filings`.
 10. Structured filing artifact downloader for `filing_artifacts`.
 11. XBRL/XML numeric fact parser for `financial_facts`.
+12. Shareholding pattern mapper from parsed XBRL facts.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -83,3 +84,10 @@ The third Step 5 slice parses successful XBRL/XML artifacts into `financial_fact
   consolidated/standalone signal when the context makes it visible.
 - The first parser is deliberately conservative and source-backed. Deeper taxonomy mapping can be layered over the
   canonical fact table without replacing the raw fact inventory.
+
+The fourth Step 5 slice maps ownership-related XBRL facts into `shareholding_pattern`.
+
+- It consumes `financial_facts` rather than raw PDFs.
+- Concept matching is conservative and produces no rows until matching shareholding concepts are present.
+- Promoter, public, FII, DII, retail, other, and total share count fields are retained with the original fact
+  lineage.

@@ -15,6 +15,7 @@ from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
 from india_equity_engine.pipelines.ingest_market_eod import ingest_market_eod
 from india_equity_engine.pipelines.parse_financial_facts import parse_financial_facts
+from india_equity_engine.pipelines.parse_shareholding_pattern import parse_shareholding_pattern
 from india_equity_engine.pipelines.refresh_universe import refresh_universe
 from india_equity_engine.storage.registry import SourceRegistry
 
@@ -157,6 +158,20 @@ def parse_financial_facts_command(
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
     result = parse_financial_facts(settings, limit=limit)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("parse-shareholding-pattern")
+def parse_shareholding_pattern_command(
+    limit: Annotated[int, typer.Option(help="Maximum number of candidate facts to scan.")] = 5000,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Parse shareholding pattern rows from financial facts."""
+
+    settings = Settings.load(config_dir)
+    if limit < 1:
+        raise typer.BadParameter("Limit must be at least 1.")
+    result = parse_shareholding_pattern(settings, limit=limit)
     typer.echo(result.model_dump_json(indent=2))
 
 
