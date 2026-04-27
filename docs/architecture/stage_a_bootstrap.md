@@ -9,6 +9,7 @@ This repo starts with the first implementation step from the design document:
 5. Canonical schemas with point-in-time lineage fields.
 6. A security-master pipeline for NSE `EQUITY_L.csv`, Nifty 500 membership, and BSE aliases.
 7. An NSE cash-market EOD pipeline for `price_daily`.
+8. An NSE announcements RSS pipeline for `corporate_announcements`.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -37,3 +38,14 @@ The first EOD market slice ingests NSE cash-market bhavcopy data into `price_dai
 - It enriches matched rows with NSE `sec_bhavdata_full_DDMMYYYY.csv` delivery quantity and delivery percentage.
 - Basic OHLCV quality checks run before Parquet writes.
 - One `trade_date_YYYYMMDD.parquet` file is written per trading date, making repeat runs idempotent.
+
+## Stage A Step 4
+
+The first announcement/disclosure slice ingests NSE corporate announcements RSS into
+`corporate_announcements`.
+
+- RSS XML is stored immutably under `data/raw/`.
+- Announcement IDs are stable and deterministic.
+- NSE symbols are extracted from announcement links when possible and resolved through the local listings table.
+- `announced_at`, `available_at`, `retrieved_at`, source URL, document hash, and parser version are preserved.
+- Attachments are referenced by URL; full attachment download/enrichment is a later slice.

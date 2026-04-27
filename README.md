@@ -60,12 +60,19 @@ Or specify a trading date:
 iee ingest-market-eod --trade-date 2026-04-24
 ```
 
+Run the NSE corporate announcements pipeline:
+
+```powershell
+iee ingest-disclosures
+```
+
 The refresh currently builds:
 
 - `instruments`
 - `listings`
 - `universe_memberships`
 - `price_daily`
+- `corporate_announcements`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.

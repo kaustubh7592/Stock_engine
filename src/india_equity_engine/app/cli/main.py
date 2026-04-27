@@ -10,6 +10,7 @@ import typer
 
 from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.settings import Settings
+from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_market_eod import ingest_market_eod
 from india_equity_engine.pipelines.refresh_universe import refresh_universe
 from india_equity_engine.storage.registry import SourceRegistry
@@ -93,6 +94,17 @@ def ingest_market_eod_command(
     settings = Settings.load(config_dir)
     parsed_trade_date = _parse_trade_date_option(trade_date)
     result = ingest_market_eod(settings, trade_date=parsed_trade_date)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("ingest-disclosures")
+def ingest_disclosures_command(
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the NSE corporate announcements RSS ingestion pipeline."""
+
+    settings = Settings.load(config_dir)
+    result = ingest_disclosures(settings)
     typer.echo(result.model_dump_json(indent=2))
 
 
