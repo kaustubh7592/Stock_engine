@@ -11,6 +11,7 @@ This repo starts with the first implementation step from the design document:
 7. An NSE cash-market EOD pipeline for `price_daily`.
 8. NSE announcements and corporate-actions RSS pipelines for `corporate_announcements` and
    `corporate_actions`.
+9. NSE filing-discovery metadata pipeline for `filings`.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -51,3 +52,15 @@ The announcement/disclosure foundation ingests NSE corporate announcements RSS i
 - `announced_at`, `available_at`, `retrieved_at`, source URL, document hash, and parser version are preserved.
 - Corporate actions capture action type, ex-date, record date, book-closure dates, ratio/amount text, and face value.
 - Attachments are referenced by URL; full attachment download/enrichment is a later slice.
+
+## Stage A Step 5
+
+The first filing/XBRL slice builds a metadata inventory in `filings`.
+
+- Filing/document URLs are discovered from official NSE exchange disclosure metadata.
+- Document type is detected from URLs and XBRL/XML documents are flagged with `xbrl_flag`.
+- Filing family is classified conservatively from the exchange subject text.
+- PDFs are recorded as documents, not parsed as the primary source.
+- Raw feed artifacts are stored immutably and point-in-time lineage fields are preserved.
+- Full XBRL parsing into `financial_facts`, `shareholding_pattern`, and governance tables is layered after this
+  discovery foundation.

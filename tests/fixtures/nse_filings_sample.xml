@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>NSE News - Latest Announcements</title>
+    <link>https://www.nseindia.com/companies-listing/corporate-filings-announcements</link>
+    <description>National Stock Exchange- Announcements</description>
+    <item>
+      <title>Reliance Industries Limited</title>
+      <link>https://nsearchives.nseindia.com/corporate/RELIANCE_27042026120000_Results.xml</link>
+      <description>Reliance Industries Limited has informed the Exchange about Financial Results for the quarter ended 31-Mar-2026 |SUBJECT: Financial Results</description>
+      <pubDate>27-Apr-2026 12:01:05</pubDate>
+    </item>
+    <item>
+      <title>Tata Consultancy Services Limited</title>
+      <link>https://nsearchives.nseindia.com/corporate/TCS_27042026113000_AnnualReport.pdf</link>
+      <description>Tata Consultancy Services Limited has informed the Exchange about Annual Report |SUBJECT: Annual Report</description>
+      <pubDate>27-Apr-2026 11:31:10</pubDate>
+    </item>
+  </channel>
+</rss>

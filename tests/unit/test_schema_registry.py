@@ -9,6 +9,7 @@ def test_core_tables_exist() -> None:
         "price_daily",
         "corporate_announcements",
         "corporate_actions",
+        "filings",
         "score_snapshots",
     ):
         assert table in CANONICAL_SCHEMAS

@@ -11,6 +11,7 @@ import typer
 from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
+from india_equity_engine.pipelines.ingest_filings import ingest_filings
 from india_equity_engine.pipelines.ingest_market_eod import ingest_market_eod
 from india_equity_engine.pipelines.refresh_universe import refresh_universe
 from india_equity_engine.storage.registry import SourceRegistry
@@ -105,6 +106,17 @@ def ingest_disclosures_command(
 
     settings = Settings.load(config_dir)
     result = ingest_disclosures(settings)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("ingest-filings")
+def ingest_filings_command(
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the filing discovery ingestion pipeline."""
+
+    settings = Settings.load(config_dir)
+    result = ingest_filings(settings)
     typer.echo(result.model_dump_json(indent=2))
 
 

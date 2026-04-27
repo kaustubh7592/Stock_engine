@@ -44,6 +44,15 @@ sources:
     cost: free_public
     cadence: hourly_plus_daily_archive
     enabled: true
+  - code: S09
+    family: nse
+    name: NSE filing discovery
+    purpose: XBRL and filing discovery
+    url: https://www.nseindia.com/companies-listing/corporate-filings-announcements-xbrl
+    fetch_mode: rss_metadata_plus_xbrl_surface
+    cost: free_public
+    cadence: daily
+    enabled: true
   - code: S12
     family: nse
     name: NSE All Reports derivatives

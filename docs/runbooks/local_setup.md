@@ -55,3 +55,12 @@ iee ingest-disclosures
 The command stores the raw NSE RSS XML files under `data/raw/`, writes
 `corporate_announcements/current.parquet` and `corporate_actions/current.parquet`, and refreshes the related
 DuckDB views.
+
+Discover NSE filing metadata:
+
+```powershell
+iee ingest-filings
+```
+
+The command stores the raw discovery feed under `data/raw/`, writes `filings/current.parquet`, and refreshes the
+DuckDB `filings` view. XBRL/XML documents are flagged for later structured parsing.

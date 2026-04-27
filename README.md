@@ -66,6 +66,12 @@ Run the NSE corporate announcements pipeline:
 iee ingest-disclosures
 ```
 
+Run the filing-discovery pipeline:
+
+```powershell
+iee ingest-filings
+```
+
 The refresh currently builds:
 
 - `instruments`
@@ -74,8 +80,12 @@ The refresh currently builds:
 - `price_daily`
 - `corporate_announcements`
 - `corporate_actions`
+- `filings`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
+
+`filings` is metadata-first: it discovers exchange filing/document URLs and flags XBRL/XML documents for later
+structured parsing.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
