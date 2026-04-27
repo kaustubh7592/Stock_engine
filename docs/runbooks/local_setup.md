@@ -46,11 +46,12 @@ iee ingest-market-eod --trade-date 2026-04-24
 The pipeline stores the raw NSE price zip and delivery CSV under `data/raw/`, writes `price_daily` Parquet under
 `data/silver/`, and refreshes the DuckDB `price_daily` view.
 
-Ingest NSE corporate announcements:
+Ingest NSE corporate announcements and corporate actions:
 
 ```powershell
 iee ingest-disclosures
 ```
 
-The command stores the raw NSE announcements RSS XML under `data/raw/`, writes
-`corporate_announcements/current.parquet`, and refreshes the DuckDB `corporate_announcements` view.
+The command stores the raw NSE RSS XML files under `data/raw/`, writes
+`corporate_announcements/current.parquet` and `corporate_actions/current.parquet`, and refreshes the related
+DuckDB views.

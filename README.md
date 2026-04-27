@@ -73,6 +73,7 @@ The refresh currently builds:
 - `universe_memberships`
 - `price_daily`
 - `corporate_announcements`
+- `corporate_actions`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.

@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from india_equity_engine.connectors.nse.announcements import NSEAnnouncementsRSSConnector
+from india_equity_engine.connectors.nse.announcements import (
+    NSEAnnouncementsRSSConnector,
+    NSECorporateActionsRSSConnector,
+)
 from india_equity_engine.core.schemas.contracts import RawArtifact, SourceConfig
 
 
@@ -47,3 +50,43 @@ def test_parse_and_normalize_nse_announcements_rss_fixture() -> None:
     assert row["category"] == "outcome"
     assert row["sub_category"] == "Outcome of Board Meeting"
     assert row["attachment_url"].endswith("Outcome.pdf")
+
+
+def test_parse_and_normalize_nse_corporate_actions_rss_fixture() -> None:
+    artifact = RawArtifact(
+        source_code="S07",
+        source_family="nse",
+        logical_name="nse_corporate_actions_rss",
+        source_url="https://nsearchives.nseindia.com/content/RSS/Corporate_action.xml",
+        content=Path("tests/fixtures/nse_corporate_actions_sample.xml").read_bytes(),
+        extension="xml",
+        retrieved_at=datetime(2026, 4, 27, 12, 30, tzinfo=timezone.utc),
+        content_type="application/xml",
+    )
+
+    connector = NSECorporateActionsRSSConnector(
+        source=SourceConfig(
+            code="S07",
+            family="nse",
+            name="NSE corporate actions RSS",
+            purpose="Corporate actions",
+            url="https://nsearchives.nseindia.com/content/RSS/Corporate_action.xml",
+            fetch_mode="rss_plus_page_fetch",
+            cost="free_public",
+            cadence="hourly_plus_daily_archive",
+        ),
+        user_agent="test",
+    )
+
+    validation = connector.validate(artifact)
+    parsed = connector.parse(artifact)
+    normalized = connector.normalize(parsed, artifact)
+
+    assert validation.ok
+    assert len(parsed) == 2
+    assert len(normalized) == 2
+    row = normalized[0].row
+    assert row["action_type"] == "dividend"
+    assert row["__nse_symbol"] == "RELIANCEINDUSTRIESLIMITED"
+    assert row["ratio_or_amount"] == "INTERIM DIVIDEND - RS 6 PER SHARE"
+    assert str(row["face_value_before"]) == "10"

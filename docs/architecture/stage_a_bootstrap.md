@@ -9,7 +9,8 @@ This repo starts with the first implementation step from the design document:
 5. Canonical schemas with point-in-time lineage fields.
 6. A security-master pipeline for NSE `EQUITY_L.csv`, Nifty 500 membership, and BSE aliases.
 7. An NSE cash-market EOD pipeline for `price_daily`.
-8. An NSE announcements RSS pipeline for `corporate_announcements`.
+8. NSE announcements and corporate-actions RSS pipelines for `corporate_announcements` and
+   `corporate_actions`.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -41,11 +42,12 @@ The first EOD market slice ingests NSE cash-market bhavcopy data into `price_dai
 
 ## Stage A Step 4
 
-The first announcement/disclosure slice ingests NSE corporate announcements RSS into
-`corporate_announcements`.
+The announcement/disclosure foundation ingests NSE corporate announcements RSS into
+`corporate_announcements` and NSE corporate-actions RSS into `corporate_actions`.
 
 - RSS XML is stored immutably under `data/raw/`.
-- Announcement IDs are stable and deterministic.
-- NSE symbols are extracted from announcement links when possible and resolved through the local listings table.
+- Announcement and corporate-action IDs are stable and deterministic.
+- NSE symbols/company names are resolved through the local listings and instruments tables when possible.
 - `announced_at`, `available_at`, `retrieved_at`, source URL, document hash, and parser version are preserved.
+- Corporate actions capture action type, ex-date, record date, book-closure dates, ratio/amount text, and face value.
 - Attachments are referenced by URL; full attachment download/enrichment is a later slice.
