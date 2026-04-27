@@ -25,6 +25,7 @@ def ingest_filings(settings: Settings) -> JobRunResult:
         user_agent=settings.user_agent,
         timeout_seconds=settings.http_timeout_seconds,
         verify=build_http_verify(settings),
+        trust_env=settings.http_trust_env,
     )
     source_object = connector.discover()[0]
 

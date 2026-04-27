@@ -35,11 +35,13 @@ class NSEAnnouncementsRSSConnector(SourceConnector):
         user_agent: str,
         timeout_seconds: float = 30,
         verify: bool | str | ssl.SSLContext = True,
+        trust_env: bool = False,
     ) -> None:
         self.source = source
         self.user_agent = user_agent
         self.timeout_seconds = timeout_seconds
         self.verify = verify
+        self.trust_env = trust_env
 
     def discover(self) -> list[SourceObject]:
         return [
@@ -61,6 +63,7 @@ class NSEAnnouncementsRSSConnector(SourceConnector):
             follow_redirects=True,
             headers=headers,
             verify=self.verify,
+            trust_env=self.trust_env,
         ) as client:
             try:
                 response = client.get(str(source_object.url))
@@ -257,11 +260,13 @@ class NSECorporateActionsRSSConnector(SourceConnector):
         user_agent: str,
         timeout_seconds: float = 30,
         verify: bool | str | ssl.SSLContext = True,
+        trust_env: bool = False,
     ) -> None:
         self.source = source
         self.user_agent = user_agent
         self.timeout_seconds = timeout_seconds
         self.verify = verify
+        self.trust_env = trust_env
 
     def discover(self) -> list[SourceObject]:
         return [
@@ -283,6 +288,7 @@ class NSECorporateActionsRSSConnector(SourceConnector):
             follow_redirects=True,
             headers=headers,
             verify=self.verify,
+            trust_env=self.trust_env,
         ) as client:
             try:
                 response = client.get(str(source_object.url))

@@ -53,6 +53,7 @@ def ingest_market_eod(settings: Settings, trade_date: date | None = None) -> Job
         user_agent=settings.user_agent,
         timeout_seconds=settings.http_timeout_seconds,
         verify=verify,
+        trust_env=settings.http_trust_env,
     )
     delivery_connector = NSESecurityWiseDeliveryConnector(
         source=registry.get("S04"),
@@ -60,6 +61,7 @@ def ingest_market_eod(settings: Settings, trade_date: date | None = None) -> Job
         user_agent=settings.user_agent,
         timeout_seconds=settings.http_timeout_seconds,
         verify=verify,
+        trust_env=settings.http_trust_env,
     )
 
     price_artifact, price_download_warnings = _download_first_available(price_connector)

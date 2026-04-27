@@ -14,6 +14,7 @@ http:
   timeout_seconds: 30
   user_agent: "india-equity-engine/0.1 personal research"
   use_system_cert_store: true
+  trust_env: false
   ca_bundle:
 pipeline:
   parser_version: "stage-a-bootstrap-0.1.0"

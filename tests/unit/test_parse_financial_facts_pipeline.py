@@ -44,6 +44,7 @@ def test_parse_financial_facts_pipeline_writes_duckdb_view(tmp_path: Path) -> No
         http_timeout_seconds=30,
         user_agent="test",
         use_system_cert_store=True,
+        http_trust_env=False,
         ca_bundle=None,
         parser_version="test",
     )

@@ -86,3 +86,16 @@ The command reads successful local `filing_artifacts`, parses XML/XBRL numeric f
 `financial_facts/current.parquet`, and refreshes the DuckDB `financial_facts` view. If the current network produced
 only failed download attempts, run `download-filings` again from a machine that can reach NSE archives before
 parsing.
+
+## HTTP proxy troubleshooting
+
+If a direct NSE archive XML URL opens in the browser but the CLI reports connection refused, inspect proxy
+environment variables:
+
+```powershell
+Get-ChildItem Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:ALL_PROXY,Env:NO_PROXY -ErrorAction SilentlyContinue
+```
+
+Values such as `http://127.0.0.1:9` point Python HTTP clients at a closed local port. The local config defaults to
+`http.trust_env: false` so the engine ignores those environment proxy variables. Set it to `true` only when the
+environment variables intentionally point to a working proxy.

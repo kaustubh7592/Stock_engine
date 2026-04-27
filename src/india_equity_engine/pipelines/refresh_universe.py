@@ -49,18 +49,21 @@ def refresh_universe(settings: Settings) -> JobRunResult:
             user_agent=settings.user_agent,
             timeout_seconds=settings.http_timeout_seconds,
             verify=verify,
+            trust_env=settings.http_trust_env,
         ),
         NSENifty500Connector(
             source=registry.get("S03"),
             user_agent=settings.user_agent,
             timeout_seconds=settings.http_timeout_seconds,
             verify=verify,
+            trust_env=settings.http_trust_env,
         ),
         BSEScripMasterConnector(
             source=registry.get("S02"),
             user_agent=settings.user_agent,
             timeout_seconds=settings.http_timeout_seconds,
             verify=verify,
+            trust_env=settings.http_trust_env,
         ),
     ]
 

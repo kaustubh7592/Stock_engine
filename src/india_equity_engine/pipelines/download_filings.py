@@ -60,6 +60,7 @@ def download_filings(
         follow_redirects=True,
         headers={"User-Agent": settings.user_agent, "Accept": "*/*"},
         verify=build_http_verify(settings),
+        trust_env=settings.http_trust_env,
     ) as client:
         for candidate in candidates:
             try:

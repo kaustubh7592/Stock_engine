@@ -109,3 +109,7 @@ parsing the financial facts yet.
 flag, source URL, hash, and parser lineage.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
+
+If direct NSE archive links open in your browser but `iee` downloads fail with connection refused, check whether
+`HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY` are set to a dead local proxy. The default config sets
+`http.trust_env: false` so Python HTTP clients ignore those environment proxy variables.

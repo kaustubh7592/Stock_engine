@@ -37,12 +37,14 @@ class NSECashMarketEODConnector(SourceConnector):
         user_agent: str,
         timeout_seconds: float = 30,
         verify: bool | str | ssl.SSLContext = True,
+        trust_env: bool = False,
     ) -> None:
         self.source = source
         self.trade_date = trade_date
         self.user_agent = user_agent
         self.timeout_seconds = timeout_seconds
         self.verify = verify
+        self.trust_env = trust_env
 
     def discover(self) -> list[SourceObject]:
         ddmmyy = self.trade_date.strftime("%d%m%y")
@@ -76,6 +78,7 @@ class NSECashMarketEODConnector(SourceConnector):
             follow_redirects=True,
             headers=headers,
             verify=self.verify,
+            trust_env=self.trust_env,
         ) as client:
             try:
                 response = client.get(str(source_object.url))
@@ -235,12 +238,14 @@ class NSESecurityWiseDeliveryConnector(SourceConnector):
         user_agent: str,
         timeout_seconds: float = 30,
         verify: bool | str | ssl.SSLContext = True,
+        trust_env: bool = False,
     ) -> None:
         self.source = source
         self.trade_date = trade_date
         self.user_agent = user_agent
         self.timeout_seconds = timeout_seconds
         self.verify = verify
+        self.trust_env = trust_env
 
     def discover(self) -> list[SourceObject]:
         ddmmyyyy = self.trade_date.strftime("%d%m%Y")
@@ -276,6 +281,7 @@ class NSESecurityWiseDeliveryConnector(SourceConnector):
             follow_redirects=True,
             headers=headers,
             verify=self.verify,
+            trust_env=self.trust_env,
         ) as client:
             try:
                 response = client.get(str(source_object.url))

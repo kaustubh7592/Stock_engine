@@ -27,6 +27,7 @@ class Settings:
     http_timeout_seconds: float
     user_agent: str
     use_system_cert_store: bool
+    http_trust_env: bool
     ca_bundle: Path | None
     parser_version: str
 
@@ -62,6 +63,7 @@ class Settings:
             http_timeout_seconds=float(http.get("timeout_seconds", 30)),
             user_agent=str(http.get("user_agent", "india-equity-engine/0.1")),
             use_system_cert_store=bool(http.get("use_system_cert_store", True)),
+            http_trust_env=bool(http.get("trust_env", False)),
             ca_bundle=Path(http["ca_bundle"]).resolve() if http.get("ca_bundle") else None,
             parser_version=str(pipeline.get("parser_version", "unknown")),
         )

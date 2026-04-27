@@ -31,12 +31,14 @@ def ingest_disclosures(settings: Settings) -> JobRunResult:
             user_agent=settings.user_agent,
             timeout_seconds=settings.http_timeout_seconds,
             verify=verify,
+            trust_env=settings.http_trust_env,
         ),
         NSECorporateActionsRSSConnector(
             source=registry.get("S07"),
             user_agent=settings.user_agent,
             timeout_seconds=settings.http_timeout_seconds,
             verify=verify,
+            trust_env=settings.http_trust_env,
         ),
     ]
 
