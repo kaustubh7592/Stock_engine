@@ -27,26 +27,43 @@ def ingest_filings(settings: Settings) -> JobRunResult:
         verify=build_http_verify(settings),
         trust_env=settings.http_trust_env,
     )
-    source_object = connector.discover()[0]
 
-    try:
-        artifact = connector.download(source_object)
-    except EngineError as exc:
-        return JobRunResult(job_name="ingest_filings", status="failed", warnings=[str(exc)])
+    raw_records = []
+    normalized = []
+    records_in = 0
+    warnings = []
+    for source_object in connector.discover():
+        try:
+            artifact = connector.download(source_object)
+        except EngineError as exc:
+            warnings.append(str(exc))
+            continue
 
-    validation = connector.validate(artifact)
-    if not validation.ok:
+        validation = connector.validate(artifact)
+        if not validation.ok:
+            warnings.append(validation.message)
+            continue
+
+        raw_record = RawArtifactStore(settings.raw_root, settings.parser_version).store(artifact)
+        raw_records.append(raw_record)
+        parsed = connector.parse(artifact)
+        records_in += len(parsed)
+        source_records = connector.normalize(parsed, artifact)
+        source_records = _resolve_filings(source_records, _load_nse_resolution_maps(settings))
+        source_records = _with_lineage(
+            source_records,
+            raw_record.sha256,
+            settings.parser_version,
+        )
+        normalized.extend(source_records)
+
+    if not normalized:
         return JobRunResult(
             job_name="ingest_filings",
             status="failed",
-            warnings=[validation.message],
+            warnings=warnings or ["No filing records were produced."],
         )
 
-    raw_record = RawArtifactStore(settings.raw_root, settings.parser_version).store(artifact)
-    parsed = connector.parse(artifact)
-    normalized = connector.normalize(parsed, artifact)
-    normalized = _resolve_filings(normalized, _load_nse_resolution_maps(settings))
-    normalized = _with_lineage(normalized, raw_record.sha256, settings.parser_version)
     normalized = _dedupe_filings(normalized)
     normalized = _strip_private_fields(normalized)
 
@@ -60,15 +77,19 @@ def ingest_filings(settings: Settings) -> JobRunResult:
     xbrl_count = sum(1 for record in normalized if record.row.get("xbrl_flag"))
     return JobRunResult(
         job_name="ingest_filings",
-        status="success",
-        records_in=len(parsed),
+        status="partial_success" if warnings else "success",
+        records_in=records_in,
         records_out=len(normalized),
+        warnings=warnings,
         outputs={
-            "raw_artifact": str(raw_record.path),
-            "document_hash": raw_record.sha256,
+            "raw_artifacts": [str(record.path) for record in raw_records],
+            "document_hashes": {record.logical_name: record.sha256 for record in raw_records},
             "tables": {"filings": len(normalized)},
             "resolved_instrument_count": resolved_count,
             "xbrl_count": xbrl_count,
+            "shareholding_count": sum(
+                1 for record in normalized if record.row.get("filing_family") == "shareholding"
+            ),
             "parquet_outputs": [str(result.path) for result in write_results if result.path],
             "duckdb_path": str(settings.duckdb_path),
         },

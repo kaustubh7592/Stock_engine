@@ -84,6 +84,8 @@ def parse_financial_facts_from_xml(
             "statement_type": _statement_type(local_name),
             "concept_name": _canonical_concept_name(local_name),
             "taxonomy_concept": taxonomy_concept,
+            "context_id": context.context_id,
+            "context_text": context.context_text,
             "period_end": context.period_end,
             "period_type": context.period_type,
             "consolidated_flag": context.consolidated_flag,

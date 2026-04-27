@@ -1,0 +1,19 @@
+[
+  {
+    "symbol": "RELIANCE",
+    "desc": "NEW_1",
+    "industry": "-",
+    "name": "Reliance Industries Limited",
+    "date": "31-MAR-2026",
+    "xbrl": "https://nsearchives.nseindia.com/corporate/xbrl/SHP_1655961_21042026012504_WEB.xml",
+    "revisedData": "N",
+    "recordId": "209982",
+    "isin": null,
+    "pr_and_prgrp": "50",
+    "public_val": "50",
+    "submissionDate": "21-APR-2026",
+    "broadcastDate": "21-APR-2026 13:25:14",
+    "systemDate": "21-APR-2026 13:25:18",
+    "xbrlFileSize": "511.88 KB"
+  }
+]

@@ -27,6 +27,8 @@ class ShareholdingFact:
     filing_id: str | None
     concept_name: str
     taxonomy_concept: str | None
+    context_id: str | None
+    context_text: str | None
     period_end: object | None
     consolidated_flag: bool | None
     unit: str | None
@@ -50,7 +52,11 @@ def map_shareholding_pattern(facts: list[ShareholdingFact]) -> list[NormalizedRe
     lineage: dict[tuple[object, object, object], dict[str, Any]] = {}
 
     for fact in facts:
-        field_name = shareholding_field_for_concept(fact.concept_name, fact.taxonomy_concept)
+        field_name = shareholding_field_for_concept(
+            fact.concept_name,
+            fact.taxonomy_concept,
+            fact.context_text or fact.context_id,
+        )
         if field_name is None or fact.instrument_id is None or fact.period_end is None:
             continue
 
@@ -77,7 +83,7 @@ def map_shareholding_pattern(facts: list[ShareholdingFact]) -> list[NormalizedRe
             )
             lineage[key] = _lineage_from_fact(fact)
 
-        value = _int_value(fact.value_num) if field_name == "share_count" else fact.value_num
+        value = _normalize_shareholding_value(field_name, fact.value_num)
         if row.get(field_name) is None or _is_more_specific(fact, lineage[key]):
             row[field_name] = value
             lineage[key] = _lineage_from_fact(fact)
@@ -95,26 +101,33 @@ def map_shareholding_pattern(facts: list[ShareholdingFact]) -> list[NormalizedRe
 def shareholding_field_for_concept(
     concept_name: str,
     taxonomy_concept: str | None = None,
+    context_text: str | None = None,
 ) -> str | None:
     """Return the canonical shareholding field for a parsed fact concept."""
 
-    text = _normalize_text(f"{concept_name} {taxonomy_concept or ''}")
+    concept_text = _normalize_text(f"{concept_name} {taxonomy_concept or ''}")
+    context = _normalize_text(context_text or "")
+    text = f"{concept_text} {context}"
     if not _looks_like_shareholding_text(text):
         return None
 
-    if _has_any(text, ("totalnumberofshares", "totalshareholding", "totalsharesheld")):
+    if _has_any(concept_text, ("totalnumberofsharesheld", "totalsharesheld")):
         return "share_count"
-    if _has_any(text, ("promoterandpromotergroup", "promotergroup", "promoter")):
+    if not _is_percentage_shareholding_concept(concept_text):
+        return None
+    if _has_any(context, ("nonpromoternonpublic", "employeetrust")):
+        return "other_pct"
+    if _has_any(context, ("promoterandpromotergroup", "promotergroup", "promoter")):
         return "promoter_pct"
-    if _has_any(text, ("foreigninstitution", "foreignportfolio", "fpi", "fii")):
+    if _has_any(context, ("foreigninstitution", "foreignportfolio", "fpi", "fii")):
         return "fii_pct"
-    if _has_any(text, ("domesticinstitution", "mutualfund", "insurancecompan", "dii")):
+    if _has_any(context, ("domesticinstitution", "mutualfund", "insurancecompan", "dii")):
         return "dii_pct"
-    if _has_any(text, ("retail", "individualshareholder", "noninstitution")):
+    if _has_any(context, ("retail", "individualshareholder", "noninstitution")):
         return "retail_pct"
-    if _has_any(text, ("public", "publicshareholding", "publiccategory")):
+    if _has_any(context, ("public", "publicshareholding", "publiccategory")):
         return "public_pct"
-    if _has_any(text, ("other", "others")):
+    if _has_any(context, ("other", "others")):
         return "other_pct"
     return None
 
@@ -128,6 +141,8 @@ def shareholding_fact_from_row(row: dict[str, Any]) -> ShareholdingFact | None:
         filing_id=_string_or_none(row.get("filing_id")),
         concept_name=str(row.get("concept_name") or ""),
         taxonomy_concept=_string_or_none(row.get("taxonomy_concept")),
+        context_id=_string_or_none(row.get("context_id")),
+        context_text=_string_or_none(row.get("context_text")),
         period_end=row.get("period_end"),
         consolidated_flag=row.get("consolidated_flag"),
         unit=_string_or_none(row.get("unit")),
@@ -161,6 +176,25 @@ def _looks_like_shareholding_text(text: str) -> bool:
             "dii",
         ),
     )
+
+
+def _is_percentage_shareholding_concept(text: str) -> bool:
+    return _has_any(
+        text,
+        (
+            "shareholdingasapercentageoftotalnumberofshares",
+            "shareholdingasapercentageassumingfullconversion",
+            "percentageoftotalvotingrights",
+        ),
+    )
+
+
+def _normalize_shareholding_value(field_name: str, value: Decimal) -> Decimal | int:
+    if field_name == "share_count":
+        return _int_value(value)
+    if Decimal("0") <= value <= Decimal("1"):
+        return value * Decimal("100")
+    return value
 
 
 def _normalize_text(value: str) -> str:

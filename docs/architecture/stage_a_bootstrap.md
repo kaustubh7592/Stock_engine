@@ -61,6 +61,7 @@ The announcement/disclosure foundation ingests NSE corporate announcements RSS i
 The first filing/XBRL slice builds a metadata inventory in `filings`.
 
 - Filing/document URLs are discovered from official NSE exchange disclosure metadata.
+- NSE shareholding-pattern API records are included so `shareholding_pattern` has source XBRLs to consume.
 - Document type is detected from URLs and XBRL/XML documents are flagged with `xbrl_flag`.
 - Filing family is classified conservatively from the exchange subject text.
 - PDFs are recorded as documents, not parsed as the primary source.

@@ -62,13 +62,20 @@ Discover NSE filing metadata:
 iee ingest-filings
 ```
 
-The command stores the raw discovery feed under `data/raw/`, writes `filings/current.parquet`, and refreshes the
-DuckDB `filings` view. XBRL/XML documents are flagged for later structured parsing.
+The command stores the raw discovery feeds under `data/raw/`, writes `filings/current.parquet`, and refreshes the
+DuckDB `filings` view. It includes NSE announcements RSS plus official NSE shareholding-pattern filing APIs.
+XBRL/XML documents are flagged for later structured parsing.
 
 Download selected filing artifacts:
 
 ```powershell
 iee download-filings --document-types XBRL,XML,ZIP --limit 25
+```
+
+For shareholding filings specifically:
+
+```powershell
+iee download-filings --filing-family shareholding --document-types XBRL --limit 25
 ```
 
 The command reads the local `filings` view, downloads prioritized structured documents, stores immutable raw

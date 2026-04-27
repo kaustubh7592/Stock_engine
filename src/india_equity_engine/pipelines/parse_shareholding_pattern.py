@@ -72,6 +72,8 @@ def _load_candidate_fact_rows(settings: Settings, limit: int) -> list[dict[str, 
             filing_id,
             concept_name,
             taxonomy_concept,
+            context_id,
+            context_text,
             period_end,
             consolidated_flag,
             unit,
@@ -100,6 +102,10 @@ def _load_candidate_fact_rows(settings: Settings, limit: int) -> list[dict[str, 
             or contains(lower(taxonomy_concept), 'promoter')
             or contains(lower(taxonomy_concept), 'public')
             or contains(lower(taxonomy_concept), 'institution')
+            or contains(lower(context_text), 'promoter')
+            or contains(lower(context_text), 'public')
+            or contains(lower(context_text), 'institution')
+            or contains(lower(context_text), 'retail')
           )
         order by available_at desc nulls last, filing_id, concept_name
         limit ?

@@ -78,6 +78,12 @@ Download structured filing artifacts for later XBRL parsing:
 iee download-filings --document-types XBRL,XML,ZIP --limit 25
 ```
 
+For a focused ownership run:
+
+```powershell
+iee download-filings --filing-family shareholding --document-types XBRL --limit 25
+```
+
 Parse downloaded XBRL/XML artifacts into financial facts:
 
 ```powershell
@@ -111,6 +117,9 @@ structured parsing.
 
 `filing_artifacts` records local raw downloads, hashes, metadata sidecars, and failed download attempts without
 parsing the financial facts yet.
+
+The filing discovery step includes NSE corporate announcements RSS plus the official NSE shareholding-pattern
+filing API, so `filings` can contain shareholding XBRL links before artifact download.
 
 `financial_facts` is XBRL/XML-first and extracts numeric reported facts with context period, unit, consolidation
 flag, source URL, hash, and parser lineage.

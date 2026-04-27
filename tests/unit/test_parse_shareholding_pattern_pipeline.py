@@ -18,9 +18,10 @@ def test_parse_shareholding_pattern_pipeline_writes_duckdb_view(tmp_path: Path) 
                 values
                 (
                     'instrument_1', 'filing_1',
-                    'promoter_and_promoter_group_shareholding_percentage',
-                    'taxonomy#PromoterAndPromoterGroupShareholdingPercentage',
-                    date '2026-03-31', false, 'pure', 51.2::decimal(18,4),
+                    'shareholding_as_apercentage_of_total_number_of_shares',
+                    'taxonomy#ShareholdingAsAPercentageOfTotalNumberOfShares',
+                    'ctx_promoter', 'PromoterAndPromoterGroupMember',
+                    date '2026-03-31', false, 'pure', 0.512::decimal(18,4),
                     'nse', 'https://example.test/xbrl.xml',
                     timestamp '2026-04-27 12:30:00',
                     timestamp '2026-04-27 12:30:00',
@@ -29,9 +30,11 @@ def test_parse_shareholding_pattern_pipeline_writes_duckdb_view(tmp_path: Path) 
                     timestamp '2026-04-27 12:30:00'
                 ),
                 (
-                    'instrument_1', 'filing_1', 'public_shareholding_percentage',
-                    'taxonomy#PublicShareholdingPercentage',
-                    date '2026-03-31', false, 'pure', 48.8::decimal(18,4),
+                    'instrument_1', 'filing_1',
+                    'shareholding_as_apercentage_of_total_number_of_shares',
+                    'taxonomy#ShareholdingAsAPercentageOfTotalNumberOfShares',
+                    'ctx_public', 'PublicMember',
+                    date '2026-03-31', false, 'pure', 0.488::decimal(18,4),
                     'nse', 'https://example.test/xbrl.xml',
                     timestamp '2026-04-27 12:30:00',
                     timestamp '2026-04-27 12:30:00',
@@ -40,10 +43,10 @@ def test_parse_shareholding_pattern_pipeline_writes_duckdb_view(tmp_path: Path) 
                     timestamp '2026-04-27 12:30:00'
                 )
             ) as t(
-                instrument_id, filing_id, concept_name, taxonomy_concept, period_end,
-                consolidated_flag, unit, value_num, source, source_url, retrieved_at,
-                available_at, as_of_date, document_hash, parser_version, restated_flag,
-                created_at, updated_at
+                instrument_id, filing_id, concept_name, taxonomy_concept, context_id,
+                context_text, period_end, consolidated_flag, unit, value_num, source,
+                source_url, retrieved_at, available_at, as_of_date, document_hash,
+                parser_version, restated_flag, created_at, updated_at
             )
             """
         )

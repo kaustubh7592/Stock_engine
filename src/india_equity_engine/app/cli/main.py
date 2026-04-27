@@ -131,6 +131,10 @@ def download_filings_command(
             help="Comma-separated document types to download, in priority order.",
         ),
     ] = "XBRL,XML,ZIP",
+    filing_family: Annotated[
+        str | None,
+        typer.Option(help="Optional filing family filter, for example shareholding."),
+    ] = None,
     limit: Annotated[int, typer.Option(help="Maximum number of filings to download.")] = 25,
     config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
 ) -> None:
@@ -140,7 +144,12 @@ def download_filings_command(
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
     parsed_types = tuple(part.strip().upper() for part in document_types.split(",") if part.strip())
-    result = download_filings(settings, document_types=parsed_types, limit=limit)
+    result = download_filings(
+        settings,
+        document_types=parsed_types,
+        filing_family=filing_family,
+        limit=limit,
+    )
     typer.echo(result.model_dump_json(indent=2))
 
 

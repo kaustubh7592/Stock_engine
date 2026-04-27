@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import ssl
 from datetime import date, datetime
@@ -22,6 +23,10 @@ from india_equity_engine.core.schemas.contracts import (
 from india_equity_engine.core.time_utils import utc_now
 
 NSE_ANNOUNCEMENTS_RSS_URL = "https://nsearchives.nseindia.com/content/RSS/Online_announcements.xml"
+NSE_SHAREHOLDING_EQUITY_API_URL = (
+    "https://www.nseindia.com/api/corporate-share-holdings-master?index=equities"
+)
+NSE_SHAREHOLDING_SME_API_URL = "https://www.nseindia.com/api/corporate-share-holdings-master?index=sme"
 
 
 class NSEFilingDiscoveryConnector(SourceConnector):
@@ -53,13 +58,28 @@ class NSEFilingDiscoveryConnector(SourceConnector):
                 url=NSE_ANNOUNCEMENTS_RSS_URL,
                 expected_extension="xml",
                 metadata={"discovery_surface": "announcements_rss"},
-            )
+            ),
+            SourceObject(
+                source=self.source,
+                logical_name="nse_shareholding_patterns_equity",
+                url=NSE_SHAREHOLDING_EQUITY_API_URL,
+                expected_extension="json",
+                metadata={"discovery_surface": "shareholding_patterns", "index": "equities"},
+            ),
+            SourceObject(
+                source=self.source,
+                logical_name="nse_shareholding_patterns_sme",
+                url=NSE_SHAREHOLDING_SME_API_URL,
+                expected_extension="json",
+                metadata={"discovery_surface": "shareholding_patterns", "index": "sme"},
+            ),
         ]
 
     def download(self, source_object: SourceObject) -> RawArtifact:
         headers = {
             "User-Agent": self.user_agent,
-            "Accept": "application/rss+xml,application/xml,*/*",
+            "Accept": _accept_header(source_object),
+            "Referer": "https://www.nseindia.com/companies-listing/corporate-filings-shareholding-pattern",
         }
         with httpx.Client(
             timeout=self.timeout_seconds,
@@ -95,6 +115,30 @@ class NSEFilingDiscoveryConnector(SourceConnector):
                 message="Downloaded NSE filing discovery feed is empty.",
             )
 
+        if raw_artifact.metadata.get("discovery_surface") == "shareholding_patterns":
+            try:
+                payload = json.loads(raw_artifact.content.decode("utf-8-sig"))
+            except json.JSONDecodeError as exc:
+                return ValidationResult(
+                    ok=False,
+                    rule_name="json_parse",
+                    message=f"NSE shareholding filing discovery payload is not JSON: {exc}",
+                    severity="high",
+                )
+            if not isinstance(payload, list) or not payload:
+                return ValidationResult(
+                    ok=False,
+                    rule_name="non_empty_rows",
+                    message="NSE shareholding filing discovery payload contained no rows.",
+                    severity="medium",
+                )
+            return ValidationResult(
+                ok=True,
+                rule_name="json_rows",
+                message="NSE shareholding filing discovery payload looks valid.",
+                metadata={"row_count": len(payload)},
+            )
+
         feed = feedparser.parse(raw_artifact.content)
         if feed.bozo and not feed.entries:
             return ValidationResult(
@@ -119,6 +163,17 @@ class NSEFilingDiscoveryConnector(SourceConnector):
         )
 
     def parse(self, raw_artifact: RawArtifact) -> list[dict[str, object]]:
+        if raw_artifact.metadata.get("discovery_surface") == "shareholding_patterns":
+            payload = json.loads(raw_artifact.content.decode("utf-8-sig"))
+            rows = []
+            for row in payload:
+                if isinstance(row, dict):
+                    normalized = {_normalize_key(key): _clean(value) for key, value in row.items()}
+                    normalized["__discovery_surface"] = "shareholding_patterns"
+                    normalized["__index"] = raw_artifact.metadata.get("index")
+                    rows.append(normalized)
+            return rows
+
         feed = feedparser.parse(raw_artifact.content)
         rows = []
         for entry in feed.entries:
@@ -137,6 +192,9 @@ class NSEFilingDiscoveryConnector(SourceConnector):
         records: list[dict[str, object]],
         raw_artifact: RawArtifact,
     ) -> list[NormalizedRecord]:
+        if raw_artifact.metadata.get("discovery_surface") == "shareholding_patterns":
+            return _normalize_shareholding_records(records, raw_artifact)
+
         output = []
         for record in records:
             company_name = _as_text(record.get("company_name"))
@@ -185,6 +243,75 @@ class NSEFilingDiscoveryConnector(SourceConnector):
         return output
 
 
+def _normalize_shareholding_records(
+    records: list[dict[str, object]],
+    raw_artifact: RawArtifact,
+) -> list[NormalizedRecord]:
+    output = []
+    for record in records:
+        symbol = _as_text(record.get("symbol"))
+        document_url = _as_text(record.get("xbrl"))
+        if not symbol or not document_url:
+            continue
+
+        period_end = _parse_nse_date(_as_text(record.get("date")))
+        submission_at = _parse_nse_date(_as_text(record.get("submissiondate")))
+        broadcast_at = _parse_nse_timestamp(_as_text(record.get("broadcastdate")))
+        system_at = _parse_nse_timestamp(_as_text(record.get("systemdate")))
+        available_at = broadcast_at or system_at
+        if available_at is None and submission_at is not None:
+            available_at = datetime.combine(submission_at, datetime.min.time())
+        if available_at is None:
+            available_at = raw_artifact.retrieved_at
+
+        filing_id = stable_id(
+            "filing",
+            "NSE",
+            "shareholding",
+            symbol,
+            period_end or "",
+            document_url,
+            record.get("recordid"),
+        )
+        output.append(
+            NormalizedRecord(
+                table_name="filings",
+                row={
+                    "filing_id": filing_id,
+                    "instrument_id": stable_id("ins", f"NSE:{symbol}"),
+                    "__nse_symbol": symbol,
+                    "__company_name": _as_text(record.get("name")),
+                    "exchange_code": "NSE",
+                    "filing_family": "shareholding",
+                    "filing_subtype": "shareholding_pattern",
+                    "period_end": period_end,
+                    "filing_date": submission_at or available_at.date(),
+                    "document_type": _document_type(document_url),
+                    "document_url": document_url,
+                    "xbrl_flag": True,
+                    "supersedes_filing_id": None,
+                    "source": raw_artifact.source_family,
+                    "source_url": raw_artifact.source_url,
+                    "retrieved_at": raw_artifact.retrieved_at,
+                    "available_at": available_at,
+                    "as_of_date": available_at.date(),
+                    "document_hash": None,
+                    "parser_version": None,
+                    "restated_flag": _is_restatement(_as_text(record.get("reviseddata"))),
+                    "created_at": raw_artifact.retrieved_at,
+                    "updated_at": raw_artifact.retrieved_at,
+                },
+            )
+        )
+    return output
+
+
+def _accept_header(source_object: SourceObject) -> str:
+    if source_object.expected_extension == "json":
+        return "application/json,text/plain,*/*"
+    return "application/rss+xml,application/xml,*/*"
+
+
 def _clean(value: object) -> str | None:
     if value is None:
         return None
@@ -202,6 +329,17 @@ def _parse_nse_timestamp(value: str | None) -> datetime | None:
     for fmt in ("%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M"):
         try:
             return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_nse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    for fmt in ("%d-%b-%Y", "%d-%b-%y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value.upper(), fmt).date()
         except ValueError:
             continue
     return None
@@ -280,3 +418,8 @@ def _is_restatement(text: str | None) -> bool:
         return False
     lowered = text.lower()
     return any(token in lowered for token in ("revised", "corrigendum", "rectified", "restated"))
+
+
+def _normalize_key(value: str | None) -> str:
+    text = "" if value is None else value.strip().lower()
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")

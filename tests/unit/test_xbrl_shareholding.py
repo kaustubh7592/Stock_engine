@@ -10,16 +10,31 @@ from india_equity_engine.connectors.xbrl.shareholding import (
 
 def test_shareholding_field_mapping_is_conservative() -> None:
     assert (
-        shareholding_field_for_concept("promoter_and_promoter_group_shareholding_percentage")
+        shareholding_field_for_concept(
+            "shareholding_as_apercentage_of_total_number_of_shares",
+            context_text="PromoterAndPromoterGroupMember",
+        )
         == "promoter_pct"
     )
-    assert shareholding_field_for_concept("public_shareholding_percentage") == "public_pct"
     assert (
-        shareholding_field_for_concept("foreign_institutional_investors_shareholding")
+        shareholding_field_for_concept(
+            "shareholding_as_apercentage_of_total_number_of_shares",
+            context_text="PublicMember",
+        )
+        == "public_pct"
+    )
+    assert (
+        shareholding_field_for_concept(
+            "shareholding_as_apercentage_of_total_number_of_shares",
+            context_text="ForeignInstitutionalInvestorsMember",
+        )
         == "fii_pct"
     )
     assert (
-        shareholding_field_for_concept("domestic_institutional_investors_shareholding")
+        shareholding_field_for_concept(
+            "shareholding_as_apercentage_of_total_number_of_shares",
+            context_text="DomesticInstitutionalInvestorsMember",
+        )
         == "dii_pct"
     )
     assert shareholding_field_for_concept("revenue_from_operations") is None
@@ -31,6 +46,7 @@ def test_map_shareholding_pattern_groups_facts_by_period() -> None:
         "instrument_id": "instrument_1",
         "filing_id": "filing_1",
         "taxonomy_concept": None,
+        "context_id": "ctx",
         "period_end": date(2026, 3, 31),
         "consolidated_flag": False,
         "unit": "pure",
@@ -47,17 +63,20 @@ def test_map_shareholding_pattern_groups_facts_by_period() -> None:
     }
     facts = [
         ShareholdingFact(
-            concept_name="promoter_and_promoter_group_shareholding_percentage",
-            value_num=Decimal("51.2"),
+            concept_name="shareholding_as_apercentage_of_total_number_of_shares",
+            context_text="PromoterAndPromoterGroupMember",
+            value_num=Decimal("0.512"),
             **base,
         ),
         ShareholdingFact(
-            concept_name="public_shareholding_percentage",
-            value_num=Decimal("48.8"),
+            concept_name="shareholding_as_apercentage_of_total_number_of_shares",
+            context_text="PublicMember",
+            value_num=Decimal("0.488"),
             **base,
         ),
         ShareholdingFact(
             concept_name="total_number_of_shares_held",
+            context_text="TotalMember",
             value_num=Decimal("1000000"),
             **base,
         ),

@@ -50,3 +50,32 @@ def test_parse_and_normalize_nse_filing_discovery_fixture() -> None:
     assert second["filing_family"] == "annual_report"
     assert second["document_type"] == "PDF"
     assert second["xbrl_flag"] is False
+
+
+def test_parse_and_normalize_nse_shareholding_fixture() -> None:
+    artifact = RawArtifact(
+        source_code="S09",
+        source_family="nse",
+        logical_name="nse_shareholding_patterns_equity",
+        source_url="https://www.nseindia.com/api/corporate-share-holdings-master?index=equities",
+        content=Path("tests/fixtures/nse_shareholding_patterns_sample.json").read_bytes(),
+        extension="json",
+        retrieved_at=datetime(2026, 4, 27, 12, 30, tzinfo=timezone.utc),
+        content_type="application/json",
+        metadata={"discovery_surface": "shareholding_patterns", "index": "equities"},
+    )
+
+    connector = _connector()
+    validation = connector.validate(artifact)
+    parsed = connector.parse(artifact)
+    normalized = connector.normalize(parsed, artifact)
+    row = normalized[0].row
+
+    assert validation.ok
+    assert len(parsed) == 1
+    assert row["filing_family"] == "shareholding"
+    assert row["filing_subtype"] == "shareholding_pattern"
+    assert row["period_end"] == date(2026, 3, 31)
+    assert row["filing_date"] == date(2026, 4, 21)
+    assert row["document_type"] == "XBRL"
+    assert row["xbrl_flag"] is True

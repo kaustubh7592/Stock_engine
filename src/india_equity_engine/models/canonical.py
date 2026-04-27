@@ -197,6 +197,8 @@ CANONICAL_SCHEMAS: dict[str, TableSchema] = {
             ColumnDefinition("statement_type", "TEXT"),
             ColumnDefinition("concept_name", "TEXT"),
             ColumnDefinition("taxonomy_concept", "TEXT"),
+            ColumnDefinition("context_id", "TEXT"),
+            ColumnDefinition("context_text", "TEXT"),
             ColumnDefinition("period_end", "DATE"),
             ColumnDefinition("period_type", "TEXT"),
             ColumnDefinition("consolidated_flag", "BOOLEAN"),
