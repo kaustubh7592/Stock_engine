@@ -75,3 +75,14 @@ The command reads the local `filings` view, downloads prioritized structured doc
 artifacts and metadata JSON files under `data/raw/`, writes `filing_artifacts/current.parquet`, and refreshes the
 DuckDB `filing_artifacts` view. Use a small limit for first live tests because exchange-hosted files can be slow or
 temporarily unavailable.
+
+Parse downloaded financial facts:
+
+```powershell
+iee parse-financial-facts --limit 25
+```
+
+The command reads successful local `filing_artifacts`, parses XML/XBRL numeric facts, writes
+`financial_facts/current.parquet`, and refreshes the DuckDB `financial_facts` view. If the current network produced
+only failed download attempts, run `download-filings` again from a machine that can reach NSE archives before
+parsing.

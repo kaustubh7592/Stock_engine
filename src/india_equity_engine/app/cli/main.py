@@ -14,6 +14,7 @@ from india_equity_engine.pipelines.download_filings import download_filings
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
 from india_equity_engine.pipelines.ingest_market_eod import ingest_market_eod
+from india_equity_engine.pipelines.parse_financial_facts import parse_financial_facts
 from india_equity_engine.pipelines.refresh_universe import refresh_universe
 from india_equity_engine.storage.registry import SourceRegistry
 
@@ -139,6 +140,23 @@ def download_filings_command(
         raise typer.BadParameter("Limit must be at least 1.")
     parsed_types = tuple(part.strip().upper() for part in document_types.split(",") if part.strip())
     result = download_filings(settings, document_types=parsed_types, limit=limit)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("parse-financial-facts")
+def parse_financial_facts_command(
+    limit: Annotated[
+        int,
+        typer.Option(help="Maximum number of successful artifacts to parse."),
+    ] = 25,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Parse downloaded XBRL/XML filing artifacts into financial facts."""
+
+    settings = Settings.load(config_dir)
+    if limit < 1:
+        raise typer.BadParameter("Limit must be at least 1.")
+    result = parse_financial_facts(settings, limit=limit)
     typer.echo(result.model_dump_json(indent=2))
 
 

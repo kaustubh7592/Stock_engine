@@ -13,6 +13,7 @@ This repo starts with the first implementation step from the design document:
    `corporate_actions`.
 9. NSE filing-discovery metadata pipeline for `filings`.
 10. Structured filing artifact downloader for `filing_artifacts`.
+11. XBRL/XML numeric fact parser for `financial_facts`.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -72,5 +73,13 @@ The second Step 5 slice downloads selected structured documents into immutable r
 - XBRL/XML/ZIP documents are prioritized by default.
 - Raw artifact hashes and metadata sidecar paths are retained.
 - Failed downloads are recorded with error text so live-source instability is visible rather than hidden.
-- The parser for `financial_facts`, `shareholding_pattern`, and governance tables will consume these local raw
-  artifacts in the next Step 5 slice.
+- The parser for `financial_facts`, `shareholding_pattern`, and governance tables consumes these local raw
+  artifacts in later Step 5 slices.
+
+The third Step 5 slice parses successful XBRL/XML artifacts into `financial_facts`.
+
+- Only structured XML/XBRL artifacts are parsed; PDFs remain a fallback for later work.
+- Numeric facts are retained with taxonomy concept, normalized concept name, context period, unit, and
+  consolidated/standalone signal when the context makes it visible.
+- The first parser is deliberately conservative and source-backed. Deeper taxonomy mapping can be layered over the
+  canonical fact table without replacing the raw fact inventory.

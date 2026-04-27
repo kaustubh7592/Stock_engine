@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbrli:xbrl
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+  xmlns:ind-as="http://xbrl.mca.gov.in/ind-as"
+  xmlns:xbrldi="http://xbrl.org/2006/xbrldi">
+  <xbrli:context id="FY2026Consolidated">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.mca.gov.in">TESTCO</xbrli:identifier>
+      <xbrli:segment>
+        <xbrldi:explicitMember dimension="ind-as:StatementAxis">
+          ConsolidatedMember
+        </xbrldi:explicitMember>
+      </xbrli:segment>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2025-04-01</xbrli:startDate>
+      <xbrli:endDate>2026-03-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="AsAt20260331Standalone">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.mca.gov.in">TESTCO</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:instant>2026-03-31</xbrli:instant>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:unit id="U_INR">
+    <xbrli:measure>iso4217:INR</xbrli:measure>
+  </xbrli:unit>
+  <ind-as:RevenueFromOperations contextRef="FY2026Consolidated" unitRef="U_INR" decimals="-6">
+    123456789
+  </ind-as:RevenueFromOperations>
+  <ind-as:ProfitLoss contextRef="FY2026Consolidated" unitRef="U_INR" decimals="-6">
+    (1000)
+  </ind-as:ProfitLoss>
+  <ind-as:Assets contextRef="AsAt20260331Standalone" unitRef="U_INR">999</ind-as:Assets>
+</xbrli:xbrl>
