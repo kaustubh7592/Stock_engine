@@ -12,6 +12,7 @@ from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_governance_events import build_governance_events
+from india_equity_engine.pipelines.compute_features import compute_features
 from india_equity_engine.pipelines.download_filings import download_filings
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
@@ -330,6 +331,35 @@ def build_event_signals_command(
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
     result = build_event_signals(settings, limit=limit)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("compute-features")
+def compute_features_command(
+    as_of_date: Annotated[
+        str | None,
+        typer.Option(
+            help="Snapshot date in YYYY-MM-DD format. Defaults to latest local source date.",
+        ),
+    ] = None,
+    families: Annotated[
+        str,
+        typer.Option(
+            help="Comma-separated families: technical,governance,fundamental.",
+        ),
+    ] = "technical,governance,fundamental",
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Compute Stage A deterministic feature snapshots."""
+
+    settings = Settings.load(config_dir)
+    parsed_as_of_date = _parse_trade_date_option(as_of_date)
+    parsed_families = tuple(part.strip() for part in families.split(",") if part.strip())
+    result = compute_features(
+        settings,
+        as_of_date=parsed_as_of_date,
+        families=parsed_families,
+    )
     typer.echo(result.model_dump_json(indent=2))
 
 

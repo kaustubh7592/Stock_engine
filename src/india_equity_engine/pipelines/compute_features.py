@@ -1,0 +1,290 @@
+"""Compute deterministic Stage A feature snapshots."""
+
+from __future__ import annotations
+
+from collections import Counter
+from datetime import date
+
+import duckdb
+
+from india_equity_engine.core.schemas.contracts import JobRunResult, NormalizedRecord
+from india_equity_engine.core.settings import Settings
+from india_equity_engine.features.common import add_cross_section_stats, date_or_none
+from india_equity_engine.features.fundamentals import compute_fundamental_features
+from india_equity_engine.features.governance import compute_governance_features
+from india_equity_engine.features.technical import compute_technical_features
+from india_equity_engine.storage.duckdb_store import DuckDBStore
+from india_equity_engine.storage.parquet_store import ParquetStore
+
+DEFAULT_FEATURE_FAMILIES = ("technical", "governance", "fundamental")
+
+
+def compute_features(
+    settings: Settings,
+    *,
+    as_of_date: date | None = None,
+    families: tuple[str, ...] = DEFAULT_FEATURE_FAMILIES,
+) -> JobRunResult:
+    """Compute feature_snapshots for the requested feature families."""
+
+    settings.ensure_runtime_dirs()
+    requested_families = _normalize_families(families)
+    if not requested_families:
+        return JobRunResult(
+            job_name="compute_features",
+            status="failed",
+            warnings=["No supported feature families were requested."],
+        )
+
+    resolved_as_of_date = as_of_date or _infer_as_of_date(settings, requested_families)
+    if resolved_as_of_date is None:
+        return JobRunResult(
+            job_name="compute_features",
+            status="failed",
+            warnings=["No source rows found for feature computation."],
+        )
+
+    warnings = []
+    records: list[NormalizedRecord] = []
+    records_in = 0
+    if "technical" in requested_families:
+        price_rows = _query_rows(settings, _price_daily_query(), [resolved_as_of_date])
+        records_in += len(price_rows)
+        if price_rows:
+            records.extend(compute_technical_features(price_rows, resolved_as_of_date))
+        else:
+            warnings.append("No price_daily rows found for technical features.")
+
+    if "governance" in requested_families:
+        governance_rows = _query_rows(settings, _governance_events_query(), [resolved_as_of_date])
+        pledge_rows = _query_rows(settings, _pledge_disclosures_query(), [resolved_as_of_date])
+        insider_rows = _query_rows(settings, _insider_trades_query(), [resolved_as_of_date])
+        records_in += len(governance_rows) + len(pledge_rows) + len(insider_rows)
+        if governance_rows or pledge_rows or insider_rows:
+            records.extend(
+                compute_governance_features(
+                    governance_rows,
+                    pledge_rows,
+                    insider_rows,
+                    resolved_as_of_date,
+                )
+            )
+        else:
+            warnings.append("No governance, pledge, or insider rows found for governance features.")
+
+    if "fundamental" in requested_families:
+        shareholding_rows = _query_rows(settings, _shareholding_query(), [resolved_as_of_date])
+        financial_fact_rows = _query_rows(settings, _financial_facts_query(), [resolved_as_of_date])
+        records_in += len(shareholding_rows) + len(financial_fact_rows)
+        if shareholding_rows or financial_fact_rows:
+            records.extend(
+                compute_fundamental_features(
+                    shareholding_rows,
+                    financial_fact_rows,
+                    resolved_as_of_date,
+                )
+            )
+        else:
+            warnings.append("No shareholding_pattern or financial_facts rows found.")
+
+    records = _dedupe_records(add_cross_section_stats(records))
+    if not records:
+        return JobRunResult(
+            job_name="compute_features",
+            status="failed",
+            records_in=records_in,
+            warnings=warnings or ["No feature_snapshots records were produced."],
+        )
+
+    write_results = ParquetStore(settings.gold_root).write_current_records(records)
+    duckdb_warnings = _refresh_duckdb_views(settings, write_results)
+    warnings.extend(duckdb_warnings)
+
+    counts = Counter(record.table_name for record in records)
+    family_counts = Counter(record.row.get("feature_family") for record in records)
+    feature_counts = Counter(record.row.get("feature_name") for record in records)
+    return JobRunResult(
+        job_name="compute_features",
+        status="success",
+        records_in=records_in,
+        records_out=len(records),
+        warnings=warnings,
+        outputs={
+            "as_of_date": resolved_as_of_date.isoformat(),
+            "tables": dict(counts),
+            "feature_families": dict(family_counts),
+            "features": dict(feature_counts),
+            "parquet_outputs": [str(result.path) for result in write_results if result.path],
+            "duckdb_path": str(settings.duckdb_path),
+        },
+    )
+
+
+def _normalize_families(families: tuple[str, ...]) -> tuple[str, ...]:
+    supported = set(DEFAULT_FEATURE_FAMILIES)
+    output = []
+    for family in families:
+        normalized = family.strip().lower()
+        if normalized in supported and normalized not in output:
+            output.append(normalized)
+    return tuple(output)
+
+
+def _infer_as_of_date(settings: Settings, families: tuple[str, ...]) -> date | None:
+    candidates = []
+    if "technical" in families:
+        candidates.extend(_max_dates(settings, "price_daily", "trade_date"))
+    if "governance" in families:
+        candidates.extend(_max_dates(settings, "governance_events", "event_date"))
+        candidates.extend(_max_dates(settings, "pledge_disclosures", "period_end"))
+        candidates.extend(_max_dates(settings, "insider_trades", "transaction_date"))
+    if "fundamental" in families:
+        candidates.extend(_max_dates(settings, "shareholding_pattern", "period_end"))
+        candidates.extend(_max_dates(settings, "financial_facts", "period_end"))
+    dates = [value for value in candidates if value is not None]
+    return max(dates) if dates else None
+
+
+def _max_dates(settings: Settings, table_name: str, column_name: str) -> list[date | None]:
+    query = f"select max({column_name}) as max_date from {table_name}"
+    rows = _query_rows(settings, query, [])
+    return [date_or_none(row.get("max_date")) for row in rows]
+
+
+def _query_rows(
+    settings: Settings,
+    query: str,
+    params: list[object],
+) -> list[dict[str, object]]:
+    if not settings.duckdb_path.exists():
+        return []
+    try:
+        with duckdb.connect(str(settings.duckdb_path), read_only=True) as con:
+            result = con.execute(query, params)
+            columns = [column[0] for column in result.description]
+            rows = result.fetchall()
+    except duckdb.Error:
+        return []
+    return [dict(zip(columns, row, strict=True)) for row in rows]
+
+
+def _refresh_duckdb_views(settings: Settings, write_results: list[object]) -> list[str]:
+    warnings = []
+    duckdb_store = DuckDBStore(settings.duckdb_path)
+    for result in write_results:
+        table_path = settings.gold_root / result.table_name / "current.parquet"
+        try:
+            duckdb_store.refresh_parquet_view(result.table_name, table_path)
+        except duckdb.Error as exc:
+            warnings.append(f"DuckDB view refresh failed for {result.table_name}: {exc}")
+    return warnings
+
+
+def _price_daily_query() -> str:
+    return """
+        select
+            instrument_id,
+            trade_date,
+            open_price,
+            high_price,
+            low_price,
+            close_price,
+            volume,
+            traded_value,
+            deliverable_qty,
+            deliverable_pct,
+            available_at
+        from price_daily
+        where trade_date <= ?
+        order by instrument_id, trade_date
+    """
+
+
+def _governance_events_query() -> str:
+    return """
+        select
+            instrument_id,
+            event_date,
+            event_type,
+            severity,
+            risk_flag,
+            available_at
+        from governance_events
+        where event_date <= ?
+    """
+
+
+def _pledge_disclosures_query() -> str:
+    return """
+        select
+            instrument_id,
+            period_end,
+            pledged_pct_promoter_holding,
+            pledged_pct_total_equity,
+            available_at
+        from pledge_disclosures
+        where period_end <= ?
+    """
+
+
+def _insider_trades_query() -> str:
+    return """
+        select
+            instrument_id,
+            transaction_date,
+            transaction_type,
+            value_num,
+            available_at
+        from insider_trades
+        where transaction_date <= ?
+    """
+
+
+def _shareholding_query() -> str:
+    return """
+        select
+            instrument_id,
+            period_end,
+            promoter_pct,
+            public_pct,
+            fii_pct,
+            dii_pct,
+            retail_pct,
+            other_pct,
+            share_count,
+            available_at
+        from shareholding_pattern
+        where period_end <= ?
+    """
+
+
+def _financial_facts_query() -> str:
+    return """
+        select
+            instrument_id,
+            concept_name,
+            taxonomy_concept,
+            period_end,
+            consolidated_flag,
+            value_num,
+            document_hash,
+            available_at
+        from financial_facts
+        where period_end <= ?
+          and value_num is not null
+    """
+
+
+def _dedupe_records(records: list[NormalizedRecord]) -> list[NormalizedRecord]:
+    deduped = {}
+    for record in records:
+        key = (
+            record.row.get("instrument_id"),
+            record.row.get("as_of_date"),
+            record.row.get("horizon"),
+            record.row.get("feature_family"),
+            record.row.get("feature_name"),
+        )
+        deduped[key] = record
+    return list(deduped.values())
+

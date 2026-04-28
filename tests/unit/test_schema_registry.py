@@ -20,6 +20,7 @@ def test_core_tables_exist() -> None:
         "market_flows",
         "news_items",
         "event_signals",
+        "feature_snapshots",
         "score_snapshots",
     ):
         assert table in CANONICAL_SCHEMAS

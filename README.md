@@ -92,6 +92,12 @@ iee ingest-news-items
 iee build-event-signals --limit 10000
 ```
 
+Run the Step 8 feature engine:
+
+```powershell
+iee compute-features
+```
+
 Download structured filing artifacts for later XBRL parsing:
 
 ```powershell
@@ -147,6 +153,7 @@ The refresh currently builds:
 - `market_flows`
 - `news_items`
 - `event_signals`
+- `feature_snapshots`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
@@ -187,6 +194,10 @@ event/news rows with source class, geography, novelty, optional source tone, and
 `event_signals` maps classified news into conservative sector-level exposure signals for oil/fuel, FX, rates,
 government capex/budget, rural/agriculture, commodities, regulation, election, and geopolitical channels. Stock-level
 instrument mapping can be layered once sector and exposure metadata are richer.
+
+`feature_snapshots` is written to the gold layer by `compute-features`. The first feature families are technical,
+governance, and fundamental/shareholding features, with explicit `coverage_flag` values instead of fake zeros when
+history or structured facts are missing.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 
