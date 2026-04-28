@@ -66,6 +66,16 @@ The command stores the raw discovery feeds under `data/raw/`, writes `filings/cu
 DuckDB `filings` view. It includes NSE announcements RSS plus official NSE shareholding-pattern filing APIs.
 XBRL/XML documents are flagged for later structured parsing.
 
+Ingest NSE PIT insider trades:
+
+```powershell
+iee ingest-insider-trades --from-date 2026-04-24 --to-date 2026-04-28
+```
+
+The command reads the official NSE PIT corporate-filings table, stores the raw JSON response, writes
+`insider_trades/current.parquet`, and refreshes the DuckDB view. Omit `--from-date` and `--to-date` to use the
+default recent lookback window, or pass `--symbol 360ONE` for a focused run.
+
 Download selected filing artifacts:
 
 ```powershell

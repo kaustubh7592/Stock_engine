@@ -16,6 +16,7 @@ This repo starts with the first implementation step from the design document:
 11. XBRL/XML numeric fact parser for `financial_facts`.
 12. Shareholding pattern mapper from parsed XBRL facts.
 13. Pledge/encumbrance disclosure mapper from parsed XBRL facts.
+14. NSE PIT insider-trading ingestion for `insider_trades`.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -100,3 +101,10 @@ The fifth Step 5 slice maps promoter pledge/encumbrance facts into `pledge_discl
 - Context-aware mapping separates pledge percentage of promoter holding from pledge percentage of total equity.
 - Pledged share counts, promoter share counts, and point-in-time lineage are preserved for later governance
   features.
+
+The sixth Step 5 slice ingests official NSE PIT insider-trading disclosures into `insider_trades`.
+
+- It uses the NSE corporate-filings PIT table API rather than PDF scraping.
+- Person, category, transaction type, transaction date, quantity, value, derived price, and post-holding fields are
+  normalized into the canonical table.
+- The source XBRL URL is retained in lineage so row-level evidence remains traceable.

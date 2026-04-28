@@ -72,6 +72,12 @@ Run the filing-discovery pipeline:
 iee ingest-filings
 ```
 
+Run the NSE PIT insider-trading pipeline:
+
+```powershell
+iee ingest-insider-trades --from-date 2026-04-24 --to-date 2026-04-28
+```
+
 Download structured filing artifacts for later XBRL parsing:
 
 ```powershell
@@ -115,6 +121,7 @@ The refresh currently builds:
 - `financial_facts`
 - `shareholding_pattern`
 - `pledge_disclosures`
+- `insider_trades`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
@@ -136,6 +143,9 @@ share-count fields when matching shareholding concepts are available.
 
 `pledge_disclosures` maps promoter pledge/encumbrance XBRL facts into pledged share counts and pledge percentages,
 using the XBRL context to separate promoter-holding percentages from total-equity percentages.
+
+`insider_trades` ingests the official NSE PIT table into person/category, transaction type, quantity, value, derived
+price, and post-holding fields with row-level XBRL/source lineage.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 

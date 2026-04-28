@@ -13,6 +13,7 @@ from india_equity_engine.core.settings import Settings
 from india_equity_engine.pipelines.download_filings import download_filings
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
+from india_equity_engine.pipelines.ingest_insider_trades import ingest_insider_trades
 from india_equity_engine.pipelines.ingest_market_eod import ingest_market_eod
 from india_equity_engine.pipelines.parse_financial_facts import parse_financial_facts
 from india_equity_engine.pipelines.parse_pledge_disclosures import parse_pledge_disclosures
@@ -121,6 +122,47 @@ def ingest_filings_command(
 
     settings = Settings.load(config_dir)
     result = ingest_filings(settings)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("ingest-insider-trades")
+def ingest_insider_trades_command(
+    from_date: Annotated[
+        str | None,
+        typer.Option(help="Start date in YYYY-MM-DD format. Defaults to lookback window."),
+    ] = None,
+    to_date: Annotated[
+        str | None,
+        typer.Option(help="End date in YYYY-MM-DD format. Defaults to today."),
+    ] = None,
+    lookback_days: Annotated[
+        int,
+        typer.Option(help="Default lookback when --from-date is omitted."),
+    ] = 30,
+    index: Annotated[
+        str,
+        typer.Option(help="NSE PIT index, usually equities or sme."),
+    ] = "equities",
+    symbol: Annotated[str | None, typer.Option(help="Optional NSE symbol filter.")] = None,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the NSE PIT insider-trading ingestion pipeline."""
+
+    settings = Settings.load(config_dir)
+    if lookback_days < 1:
+        raise typer.BadParameter("Lookback days must be at least 1.")
+    parsed_from = _parse_trade_date_option(from_date)
+    parsed_to = _parse_trade_date_option(to_date)
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        raise typer.BadParameter("from-date must be on or before to-date.")
+    result = ingest_insider_trades(
+        settings,
+        from_date=parsed_from,
+        to_date=parsed_to,
+        lookback_days=lookback_days,
+        index=index,
+        symbol=symbol,
+    )
     typer.echo(result.model_dump_json(indent=2))
 
 
