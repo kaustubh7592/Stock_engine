@@ -17,6 +17,7 @@ This repo starts with the first implementation step from the design document:
 12. Shareholding pattern mapper from parsed XBRL facts.
 13. Pledge/encumbrance disclosure mapper from parsed XBRL facts.
 14. NSE PIT insider-trading ingestion for `insider_trades`.
+15. Rule-based governance event builder for `governance_events`.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -108,3 +109,10 @@ The sixth Step 5 slice ingests official NSE PIT insider-trading disclosures into
 - Person, category, transaction type, transaction date, quantity, value, derived price, and post-holding fields are
   normalized into the canonical table.
 - The source XBRL URL is retained in lineage so row-level evidence remains traceable.
+
+The final Step 5 slice builds `governance_events` from local canonical disclosure tables.
+
+- It uses conservative keyword rules over announcements and filing metadata for auditor, board, compliance, and
+  dilution events.
+- It also maps pledge disclosures and PIT rows into governance events without losing row-level source lineage.
+- This completes the Stage A filing-discovery/XBRL ingestion layer for fundamentals, shareholding, and governance.

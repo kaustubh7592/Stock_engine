@@ -15,6 +15,7 @@ def test_core_tables_exist() -> None:
         "shareholding_pattern",
         "pledge_disclosures",
         "insider_trades",
+        "governance_events",
         "score_snapshots",
     ):
         assert table in CANONICAL_SCHEMAS

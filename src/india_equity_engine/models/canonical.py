@@ -259,6 +259,22 @@ CANONICAL_SCHEMAS: dict[str, TableSchema] = {
             ColumnDefinition("post_holding", "BIGINT"),
         ),
     ),
+    "governance_events": TableSchema(
+        name="governance_events",
+        grain="One row per normalized governance event.",
+        primary_key=("governance_event_id",),
+        columns=(
+            ColumnDefinition("governance_event_id", "TEXT", False),
+            ColumnDefinition("instrument_id", "TEXT"),
+            ColumnDefinition("event_date", "DATE"),
+            ColumnDefinition("event_type", "TEXT"),
+            ColumnDefinition("severity", "TEXT"),
+            ColumnDefinition("headline", "TEXT"),
+            ColumnDefinition("event_text", "TEXT"),
+            ColumnDefinition("related_filing_id", "TEXT"),
+            ColumnDefinition("risk_flag", "BOOLEAN"),
+        ),
+    ),
     "feature_snapshots": TableSchema(
         name="feature_snapshots",
         grain="One row per feature per stock per as_of_date.",

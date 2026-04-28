@@ -10,6 +10,7 @@ import typer
 
 from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.settings import Settings
+from india_equity_engine.pipelines.build_governance_events import build_governance_events
 from india_equity_engine.pipelines.download_filings import download_filings
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
@@ -238,6 +239,20 @@ def parse_pledge_disclosures_command(
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
     result = parse_pledge_disclosures(settings, limit=limit)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("build-governance-events")
+def build_governance_events_command(
+    limit: Annotated[int, typer.Option(help="Maximum number of candidate rows to scan.")] = 10000,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Build normalized governance events from local disclosure tables."""
+
+    settings = Settings.load(config_dir)
+    if limit < 1:
+        raise typer.BadParameter("Limit must be at least 1.")
+    result = build_governance_events(settings, limit=limit)
     typer.echo(result.model_dump_json(indent=2))
 
 

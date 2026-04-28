@@ -124,6 +124,16 @@ The command reads `financial_facts`, maps promoter pledge and encumbrance XBRL c
 `pledge_disclosures`, writes `pledge_disclosures/current.parquet`, and refreshes the DuckDB view. It uses XBRL
 context labels so promoter-holding percentages and total-equity percentages are not mixed.
 
+Build governance events:
+
+```powershell
+iee build-governance-events --limit 10000
+```
+
+The command reads local `corporate_announcements`, `filings`, `pledge_disclosures`, and `insider_trades`, applies
+conservative rules for auditor, board, compliance, dilution, pledge, and insider-activity events, writes
+`governance_events/current.parquet`, and refreshes the DuckDB view.
+
 ## HTTP proxy troubleshooting
 
 If a direct NSE archive XML URL opens in the browser but the CLI reports connection refused, inspect proxy
