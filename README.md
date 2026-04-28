@@ -78,6 +78,13 @@ Run the NSE PIT insider-trading pipeline:
 iee ingest-insider-trades --from-date 2026-04-24 --to-date 2026-04-28
 ```
 
+Run the Step 6 macro and flow pipelines:
+
+```powershell
+iee ingest-macro-series
+iee ingest-market-flows
+```
+
 Download structured filing artifacts for later XBRL parsing:
 
 ```powershell
@@ -129,6 +136,8 @@ The refresh currently builds:
 - `pledge_disclosures`
 - `insider_trades`
 - `governance_events`
+- `macro_series`
+- `market_flows`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
@@ -156,6 +165,12 @@ price, and post-holding fields with row-level XBRL/source lineage.
 
 `governance_events` applies conservative rules over announcements, filings, pledge disclosures, and PIT rows to
 surface auditor, board, compliance, dilution, pledge, and insider-activity events for later governance features.
+
+`macro_series` currently ingests RBI's official current-rates panel into policy rates, reserve ratios, exchange
+rates, and market-rate series.
+
+`market_flows` currently ingests NSDL's official daily FPI/FII investment trends into equity, debt, hybrid, and route
+slices.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 

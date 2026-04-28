@@ -15,7 +15,9 @@ from india_equity_engine.pipelines.download_filings import download_filings
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
 from india_equity_engine.pipelines.ingest_insider_trades import ingest_insider_trades
+from india_equity_engine.pipelines.ingest_macro_series import ingest_macro_series
 from india_equity_engine.pipelines.ingest_market_eod import ingest_market_eod
+from india_equity_engine.pipelines.ingest_market_flows import ingest_market_flows
 from india_equity_engine.pipelines.parse_financial_facts import parse_financial_facts
 from india_equity_engine.pipelines.parse_pledge_disclosures import parse_pledge_disclosures
 from india_equity_engine.pipelines.parse_shareholding_pattern import parse_shareholding_pattern
@@ -164,6 +166,28 @@ def ingest_insider_trades_command(
         index=index,
         symbol=symbol,
     )
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("ingest-macro-series")
+def ingest_macro_series_command(
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the RBI macro/rates ingestion pipeline."""
+
+    settings = Settings.load(config_dir)
+    result = ingest_macro_series(settings)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("ingest-market-flows")
+def ingest_market_flows_command(
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the NSDL FPI market-flow ingestion pipeline."""
+
+    settings = Settings.load(config_dir)
+    result = ingest_market_flows(settings)
     typer.echo(result.model_dump_json(indent=2))
 
 

@@ -18,6 +18,7 @@ This repo starts with the first implementation step from the design document:
 13. Pledge/encumbrance disclosure mapper from parsed XBRL facts.
 14. NSE PIT insider-trading ingestion for `insider_trades`.
 15. Rule-based governance event builder for `governance_events`.
+16. RBI current-rates and NSDL FPI-flow ingestion for Step 6.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -116,3 +117,14 @@ The final Step 5 slice builds `governance_events` from local canonical disclosur
   dilution events.
 - It also maps pledge disclosures and PIT rows into governance events without losing row-level source lineage.
 - This completes the Stage A filing-discovery/XBRL ingestion layer for fundamentals, shareholding, and governance.
+
+## Stage A Step 6
+
+The first macro/flow slice adds `macro_series` and `market_flows`.
+
+- `ingest-macro-series` reads RBI's official current-rates panel and normalizes policy rates, reserve ratios,
+  exchange rates, and other single-value rates into `macro_series`.
+- `ingest-market-flows` reads NSDL's official daily FPI/FII investment trends page and normalizes gross purchases,
+  gross sales, and net flows into `market_flows`.
+- Raw HTML is stored immutably and each normalized row preserves source URL, retrieval time, document hash, and
+  parser version.

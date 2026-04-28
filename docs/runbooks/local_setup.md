@@ -134,6 +134,26 @@ The command reads local `corporate_announcements`, `filings`, `pledge_disclosure
 conservative rules for auditor, board, compliance, dilution, pledge, and insider-activity events, writes
 `governance_events/current.parquet`, and refreshes the DuckDB view.
 
+Ingest RBI macro/rates:
+
+```powershell
+iee ingest-macro-series
+```
+
+The command reads RBI's official current-rates page, stores the raw HTML, writes `macro_series/current.parquet`,
+and refreshes the DuckDB view. The first slice keeps only single numeric values, such as policy rates, reserve
+ratios, and exchange-rate observations; range values are skipped instead of being silently averaged.
+
+Ingest NSDL FPI market flows:
+
+```powershell
+iee ingest-market-flows
+```
+
+The command reads NSDL's daily FPI/FII investment trends page, stores the raw HTML, writes
+`market_flows/current.parquet`, and refreshes the DuckDB view. It separates equity, debt, hybrid, and route slices
+by encoding the investment route in `flow_type`.
+
 ## HTTP proxy troubleshooting
 
 If a direct NSE archive XML URL opens in the browser but the CLI reports connection refused, inspect proxy
