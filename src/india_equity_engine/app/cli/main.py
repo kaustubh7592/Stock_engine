@@ -10,6 +10,7 @@ import typer
 
 from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.settings import Settings
+from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_governance_events import build_governance_events
 from india_equity_engine.pipelines.download_filings import download_filings
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
@@ -18,6 +19,7 @@ from india_equity_engine.pipelines.ingest_insider_trades import ingest_insider_t
 from india_equity_engine.pipelines.ingest_macro_series import ingest_macro_series
 from india_equity_engine.pipelines.ingest_market_eod import ingest_market_eod
 from india_equity_engine.pipelines.ingest_market_flows import ingest_market_flows
+from india_equity_engine.pipelines.ingest_news_items import ingest_news_items
 from india_equity_engine.pipelines.parse_financial_facts import parse_financial_facts
 from india_equity_engine.pipelines.parse_pledge_disclosures import parse_pledge_disclosures
 from india_equity_engine.pipelines.parse_shareholding_pattern import parse_shareholding_pattern
@@ -191,6 +193,43 @@ def ingest_market_flows_command(
     typer.echo(result.model_dump_json(indent=2))
 
 
+@app.command("ingest-news-items")
+def ingest_news_items_command(
+    include_gdelt: Annotated[
+        bool,
+        typer.Option("--include-gdelt/--skip-gdelt", help="Include GDELT DOC API context."),
+    ] = True,
+    include_official_pages: Annotated[
+        bool,
+        typer.Option(
+            "--include-official-pages/--skip-official-pages",
+            help="Include Budget and ECI official-page discovery.",
+        ),
+    ] = True,
+    gdelt_query: Annotated[str, typer.Option(help="GDELT DOC query string.")] = (
+        "India (RBI OR rupee OR oil OR crude OR budget OR election OR tariff OR conflict)"
+    ),
+    gdelt_max_records: Annotated[
+        int,
+        typer.Option(help="Maximum GDELT article records to request."),
+    ] = 50,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the Step 7 news/event ingestion pipeline."""
+
+    if gdelt_max_records < 1:
+        raise typer.BadParameter("gdelt-max-records must be at least 1.")
+    settings = Settings.load(config_dir)
+    result = ingest_news_items(
+        settings,
+        include_gdelt=include_gdelt,
+        include_official_pages=include_official_pages,
+        gdelt_query=gdelt_query,
+        gdelt_max_records=gdelt_max_records,
+    )
+    typer.echo(result.model_dump_json(indent=2))
+
+
 @app.command("download-filings")
 def download_filings_command(
     document_types: Annotated[
@@ -277,6 +316,20 @@ def build_governance_events_command(
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
     result = build_governance_events(settings, limit=limit)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("build-event-signals")
+def build_event_signals_command(
+    limit: Annotated[int, typer.Option(help="Maximum number of news rows to scan.")] = 10000,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Build exposure-aware event signals from local news_items."""
+
+    settings = Settings.load(config_dir)
+    if limit < 1:
+        raise typer.BadParameter("Limit must be at least 1.")
+    result = build_event_signals(settings, limit=limit)
     typer.echo(result.model_dump_json(indent=2))
 
 

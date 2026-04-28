@@ -1,0 +1,13 @@
+{
+  "articles": [
+    {
+      "url": "https://example.com/india-crude-oil-context",
+      "title": "India watches crude oil prices after geopolitical conflict",
+      "seendate": "20260428T103000Z",
+      "domain": "example.com",
+      "sourcecountry": "IN",
+      "language": "English",
+      "tone": "-2.5"
+    }
+  ]
+}

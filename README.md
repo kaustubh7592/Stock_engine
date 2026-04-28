@@ -85,6 +85,13 @@ iee ingest-macro-series
 iee ingest-market-flows
 ```
 
+Run the Step 7 event/news layer:
+
+```powershell
+iee ingest-news-items
+iee build-event-signals --limit 10000
+```
+
 Download structured filing artifacts for later XBRL parsing:
 
 ```powershell
@@ -138,6 +145,8 @@ The refresh currently builds:
 - `governance_events`
 - `macro_series`
 - `market_flows`
+- `news_items`
+- `event_signals`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
@@ -171,6 +180,13 @@ rates, and market-rate series.
 
 `market_flows` currently ingests NSDL's official daily FPI/FII investment trends into equity, debt, hybrid, and route
 slices.
+
+`news_items` ingests official RBI RSS, PIB RSS, India Budget, ECI, and GDELT context surfaces into classified
+event/news rows with source class, geography, novelty, optional source tone, and extracted exposure themes.
+
+`event_signals` maps classified news into conservative sector-level exposure signals for oil/fuel, FX, rates,
+government capex/budget, rural/agriculture, commodities, regulation, election, and geopolitical channels. Stock-level
+instrument mapping can be layered once sector and exposure metadata are richer.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 

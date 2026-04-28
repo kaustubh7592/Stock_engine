@@ -44,6 +44,24 @@ sources:
     cost: free_public
     cadence: hourly
     enabled: true
+  - code: S19
+    family: budget
+    name: India Budget official site
+    purpose: Union Budget documents and fiscal-policy events
+    url: https://www.indiabudget.gov.in/
+    fetch_mode: web_page_document_download
+    cost: free_public
+    cadence: release_driven
+    enabled: true
+  - code: S20
+    family: eci
+    name: Election Commission of India
+    purpose: Election notifications, schedules, and result-context events
+    url: https://www.eci.gov.in/
+    fetch_mode: web_page_document_download
+    cost: free_public
+    cadence: release_driven
+    enabled: true
   - code: S21
     family: gdelt
     name: GDELT DOC/GEO

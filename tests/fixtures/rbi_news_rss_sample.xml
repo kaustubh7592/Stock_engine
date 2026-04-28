@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>RBI Press Releases</title>
+    <language>en</language>
+    <item>
+      <title>Monetary Policy Committee keeps policy repo rate unchanged</title>
+      <link>https://www.rbi.org.in/scripts/BS_PressReleaseDisplay.aspx?prid=99999</link>
+      <description>Liquidity and monetary policy statement with banking system measures.</description>
+      <pubDate>Mon, 27 Apr 2026 11:50:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Reporting instructions for Authorised Dealer Category-I Banks</title>
+      <link>https://www.rbi.org.in/scripts/NotificationUser.aspx?Id=99999</link>
+      <description>FEMA and foreign exchange reporting instructions.</description>
+      <pubDate>Mon, 27 Apr 2026 17:35:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

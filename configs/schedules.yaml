@@ -10,7 +10,9 @@ daily_after_close_ist:
   explain_snapshots: "20:30"
 hourly_events_ist:
   window: "08:00-23:00"
-  job: ingest_events
+  jobs:
+    - ingest_news_items
+    - build_event_signals
 weekly:
   day: Saturday
   jobs:
