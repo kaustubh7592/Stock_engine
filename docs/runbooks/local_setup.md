@@ -104,6 +104,16 @@ The command reads `financial_facts`, maps ownership-related XBRL concepts into `
 `shareholding_pattern/current.parquet`, and refreshes the DuckDB view. It may return no rows if the downloaded
 filings are board-meeting or dividend XBRLs rather than shareholding filings.
 
+Parse pledge/encumbrance disclosure rows:
+
+```powershell
+iee parse-pledge-disclosures --limit 5000
+```
+
+The command reads `financial_facts`, maps promoter pledge and encumbrance XBRL concepts into
+`pledge_disclosures`, writes `pledge_disclosures/current.parquet`, and refreshes the DuckDB view. It uses XBRL
+context labels so promoter-holding percentages and total-equity percentages are not mixed.
+
 ## HTTP proxy troubleshooting
 
 If a direct NSE archive XML URL opens in the browser but the CLI reports connection refused, inspect proxy

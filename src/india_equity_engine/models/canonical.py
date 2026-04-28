@@ -225,6 +225,22 @@ CANONICAL_SCHEMAS: dict[str, TableSchema] = {
             ColumnDefinition("share_count", "BIGINT"),
         ),
     ),
+    "pledge_disclosures": TableSchema(
+        name="pledge_disclosures",
+        grain="One row per pledge disclosure event / period.",
+        primary_key=("pledge_id",),
+        columns=(
+            ColumnDefinition("pledge_id", "TEXT", False),
+            ColumnDefinition("instrument_id", "TEXT"),
+            ColumnDefinition("filing_id", "TEXT"),
+            ColumnDefinition("period_end", "DATE"),
+            ColumnDefinition("promoter_shares", "BIGINT"),
+            ColumnDefinition("pledged_shares", "BIGINT"),
+            ColumnDefinition("pledged_pct_promoter_holding", "DECIMAL"),
+            ColumnDefinition("pledged_pct_total_equity", "DECIMAL"),
+            ColumnDefinition("release_or_creation_flag", "TEXT"),
+        ),
+    ),
     "feature_snapshots": TableSchema(
         name="feature_snapshots",
         grain="One row per feature per stock per as_of_date.",

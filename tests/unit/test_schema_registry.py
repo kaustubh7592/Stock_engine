@@ -13,6 +13,7 @@ def test_core_tables_exist() -> None:
         "filing_artifacts",
         "financial_facts",
         "shareholding_pattern",
+        "pledge_disclosures",
         "score_snapshots",
     ):
         assert table in CANONICAL_SCHEMAS

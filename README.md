@@ -96,6 +96,12 @@ Build shareholding pattern rows from parsed facts:
 iee parse-shareholding-pattern --limit 5000
 ```
 
+Build pledge/encumbrance disclosure rows from parsed facts:
+
+```powershell
+iee parse-pledge-disclosures --limit 5000
+```
+
 The refresh currently builds:
 
 - `instruments`
@@ -108,6 +114,7 @@ The refresh currently builds:
 - `filing_artifacts`
 - `financial_facts`
 - `shareholding_pattern`
+- `pledge_disclosures`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
@@ -126,6 +133,9 @@ flag, source URL, hash, and parser lineage.
 
 `shareholding_pattern` maps ownership-related XBRL facts into promoter, public, FII, DII, retail, other, and total
 share-count fields when matching shareholding concepts are available.
+
+`pledge_disclosures` maps promoter pledge/encumbrance XBRL facts into pledged share counts and pledge percentages,
+using the XBRL context to separate promoter-holding percentages from total-equity percentages.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 

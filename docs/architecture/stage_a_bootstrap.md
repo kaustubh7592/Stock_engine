@@ -15,6 +15,7 @@ This repo starts with the first implementation step from the design document:
 10. Structured filing artifact downloader for `filing_artifacts`.
 11. XBRL/XML numeric fact parser for `financial_facts`.
 12. Shareholding pattern mapper from parsed XBRL facts.
+13. Pledge/encumbrance disclosure mapper from parsed XBRL facts.
 
 The code uses a namespaced package, `india_equity_engine`, while retaining the blueprint's module boundaries
 inside the package. That avoids collisions with generic package names such as `core` or `models`.
@@ -92,3 +93,10 @@ The fourth Step 5 slice maps ownership-related XBRL facts into `shareholding_pat
 - Concept matching is conservative and produces no rows until matching shareholding concepts are present.
 - Promoter, public, FII, DII, retail, other, and total share count fields are retained with the original fact
   lineage.
+
+The fifth Step 5 slice maps promoter pledge/encumbrance facts into `pledge_disclosures`.
+
+- It consumes `financial_facts` from structured shareholding XBRL filings.
+- Context-aware mapping separates pledge percentage of promoter holding from pledge percentage of total equity.
+- Pledged share counts, promoter share counts, and point-in-time lineage are preserved for later governance
+  features.
