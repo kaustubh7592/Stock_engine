@@ -98,6 +98,12 @@ Run the Step 8 feature engine:
 iee compute-features
 ```
 
+Run the Step 9 deterministic scoring engine:
+
+```powershell
+iee score-snapshots
+```
+
 Download structured filing artifacts for later XBRL parsing:
 
 ```powershell
@@ -154,6 +160,7 @@ The refresh currently builds:
 - `news_items`
 - `event_signals`
 - `feature_snapshots`
+- `score_snapshots`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
@@ -198,6 +205,10 @@ instrument mapping can be layered once sector and exposure metadata are richer.
 `feature_snapshots` is written to the gold layer by `compute-features`. The first feature families are technical,
 governance, and fundamental/shareholding features, with explicit `coverage_flag` values instead of fake zeros when
 history or structured facts are missing.
+
+`score_snapshots` is written to the gold layer by `score-snapshots`. Scores are deterministic: component scores stay
+separate, composite scores use `configs/weights/score_weights.yaml`, and confidence/abstain behavior uses
+`configs/weights/confidence_rules.yaml`.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 

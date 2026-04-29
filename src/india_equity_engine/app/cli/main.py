@@ -25,6 +25,7 @@ from india_equity_engine.pipelines.parse_financial_facts import parse_financial_
 from india_equity_engine.pipelines.parse_pledge_disclosures import parse_pledge_disclosures
 from india_equity_engine.pipelines.parse_shareholding_pattern import parse_shareholding_pattern
 from india_equity_engine.pipelines.refresh_universe import refresh_universe
+from india_equity_engine.pipelines.score_snapshots import score_snapshots
 from india_equity_engine.storage.registry import SourceRegistry
 
 app = typer.Typer(help="India Equity Research Engine")
@@ -360,6 +361,24 @@ def compute_features_command(
         as_of_date=parsed_as_of_date,
         families=parsed_families,
     )
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("score-snapshots")
+def score_snapshots_command(
+    as_of_date: Annotated[
+        str | None,
+        typer.Option(
+            help="Score date in YYYY-MM-DD format. Defaults to latest feature snapshot date.",
+        ),
+    ] = None,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Build deterministic score snapshots from local feature snapshots."""
+
+    settings = Settings.load(config_dir)
+    parsed_as_of_date = _parse_trade_date_option(as_of_date)
+    result = score_snapshots(settings, as_of_date=parsed_as_of_date)
     typer.echo(result.model_dump_json(indent=2))
 
 
