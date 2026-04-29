@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Context, Decimal, InvalidOperation
 from statistics import mean, pstdev
 from typing import Any
 
 from india_equity_engine.core.ids import stable_id
 from india_equity_engine.core.schemas.contracts import NormalizedRecord
 from india_equity_engine.core.time_utils import utc_now
+
+FEATURE_DECIMAL_QUANT = Decimal("0.000001")
 
 
 def feature_record(
@@ -31,7 +33,7 @@ def feature_record(
     """Build a canonical feature_snapshots row."""
 
     now = utc_now()
-    value = decimal_or_none(value_num)
+    value = feature_decimal_or_none(value_num)
     return NormalizedRecord(
         table_name="feature_snapshots",
         row={
@@ -107,6 +109,25 @@ def decimal_or_none(value: object) -> Decimal | None:
         return None
 
 
+def feature_decimal_or_none(value: object) -> Decimal | None:
+    """Normalize feature values to a DuckDB-friendly decimal scale."""
+
+    decimal = decimal_or_none(value)
+    if decimal is None or not decimal.is_finite():
+        return None
+    precision = max(len(decimal.as_tuple().digits), 1) + abs(
+        FEATURE_DECIMAL_QUANT.as_tuple().exponent
+    )
+    try:
+        return decimal.quantize(
+            FEATURE_DECIMAL_QUANT,
+            rounding=ROUND_HALF_UP,
+            context=Context(prec=precision),
+        )
+    except InvalidOperation:
+        return decimal
+
+
 def date_or_none(value: object) -> date | None:
     if isinstance(value, datetime):
         return value.date()
@@ -127,4 +148,3 @@ def latest_available_at(rows: list[dict[str, Any]]) -> object | None:
 
 def _decimal(value: float) -> Decimal:
     return Decimal(str(round(value, 6)))
-

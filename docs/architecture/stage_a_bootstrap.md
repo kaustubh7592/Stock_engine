@@ -159,3 +159,13 @@ The final Stage A decision and operating surface now carries explicit determinis
 - `explain-snapshots` explains only validated snapshot fields; it does not compute indicators or invent decisions.
 - `engine-status` and `/engine-status` provide a quick local health view of table counts, latest dates, score
   classifications, and generated snapshot paths.
+
+## Post-Stage-A Usability Layer
+
+After the Stage A modules were in place, the local usability layer adds practical workflows for filling and querying
+the warehouse.
+
+- `backfill-market-eod` and `backfill-derivatives-eod` run the existing daily ingestion jobs across weekday date
+  ranges without hand-editing data.
+- `stock` and `/stocks/{symbol_or_id}` resolve NSE symbols, BSE codes, ISINs, or internal IDs into one stock payload.
+- `coverage` and `/coverage/{symbol_or_id}` report component-level data gaps for one stock.

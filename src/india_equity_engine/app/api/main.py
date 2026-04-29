@@ -13,6 +13,10 @@ from fastapi import FastAPI, HTTPException, Query
 from india_equity_engine import __version__
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.observability.job_log import record_job_run, utc_now
+from india_equity_engine.pipelines.backfill_eod import (
+    backfill_derivatives_eod,
+    backfill_market_eod,
+)
 from india_equity_engine.pipelines.backup_local_data import backup_local_data
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
@@ -25,6 +29,7 @@ from india_equity_engine.pipelines.rebuild_warehouse import rebuild_duckdb_views
 from india_equity_engine.pipelines.run_data_quality_review import run_data_quality_review
 from india_equity_engine.pipelines.run_weekly_maintenance import run_weekly_maintenance
 from india_equity_engine.pipelines.score_snapshots import score_snapshots
+from india_equity_engine.pipelines.stock_lookup import coverage_diagnostics, stock_lookup
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -118,6 +123,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Scores not found.")
         return {"count": len(rows), "rows": _json_ready(rows)}
 
+    @app.get("/stocks/{symbol_or_id}")
+    def get_stock(
+        symbol_or_id: str,
+        as_of_date: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved = active_settings()
+        parsed_date = _parse_date(as_of_date)
+        payload = stock_lookup(resolved, symbol_or_id, as_of_date=parsed_date)
+        if not payload.get("found"):
+            raise HTTPException(status_code=404, detail="Stock not found.")
+        return payload
+
+    @app.get("/coverage/{symbol_or_id}")
+    def get_coverage(
+        symbol_or_id: str,
+        as_of_date: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved = active_settings()
+        parsed_date = _parse_date(as_of_date)
+        payload = coverage_diagnostics(resolved, symbol_or_id, as_of_date=parsed_date)
+        if not payload.get("found"):
+            raise HTTPException(status_code=404, detail="Stock not found.")
+        return payload
+
     @app.get("/job-runs")
     def list_job_runs(
         limit: int = Query(default=50, ge=1, le=1000),
@@ -168,9 +197,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         include_backup: bool = Query(default=True),
         dry_run: bool = Query(default=True),
         gdelt_max_records: int = Query(default=50, ge=1, le=250),
+        from_date: str | None = Query(default=None),
+        to_date: str | None = Query(default=None),
     ) -> dict[str, Any]:
         resolved = active_settings()
         parsed_date = _parse_date(as_of_date)
+        parsed_from = _parse_date(from_date)
+        parsed_to = _parse_date(to_date)
         started_at = utc_now()
         if job_name == "ingest-news-items":
             result = ingest_news_items(
@@ -181,6 +214,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         elif job_name == "ingest-derivatives-eod":
             result = ingest_derivatives_eod(resolved, trade_date=parsed_date)
+        elif job_name == "backfill-market-eod":
+            if parsed_from is None or parsed_to is None:
+                raise HTTPException(status_code=422, detail="from_date and to_date are required.")
+            result = backfill_market_eod(resolved, from_date=parsed_from, to_date=parsed_to)
+        elif job_name == "backfill-derivatives-eod":
+            if parsed_from is None or parsed_to is None:
+                raise HTTPException(status_code=422, detail="from_date and to_date are required.")
+            result = backfill_derivatives_eod(resolved, from_date=parsed_from, to_date=parsed_to)
         elif job_name == "build-event-signals":
             result = build_event_signals(resolved, limit=limit)
         elif job_name == "compute-features":

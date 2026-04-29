@@ -32,6 +32,7 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
             where instrument_id = 'INS_1'
               and feature_name in (
                 'return_5d_pct',
+                'close_price',
                 'return_20d_pct',
                 'promoter_pledged_pct_total_equity_latest',
                 'fundamental_debt_to_assets',
@@ -46,6 +47,7 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
             """
         ).fetchall()
     by_name = {row[1]: row for row in rows}
+    assert by_name["close_price"][2] == 110
     assert by_name["fundamental_debt_to_assets"][2] is not None
     assert by_name["fundamental_debt_to_assets"][3] is True
     assert by_name["return_20d_pct"] == ("technical", "return_20d_pct", None, False)

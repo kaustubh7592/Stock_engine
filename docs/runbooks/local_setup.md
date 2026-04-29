@@ -37,6 +37,15 @@ Ingest NSE EOD prices:
 iee ingest-market-eod
 ```
 
+Backfill NSE EOD prices over a range:
+
+```powershell
+iee backfill-market-eod --from-date 2026-01-01 --to-date 2026-04-28
+```
+
+The backfill command skips weekends, runs the existing daily ingestion job for each weekday, and keeps going after
+failed dates by default. Use `--stop-on-failure` when debugging one source issue.
+
 The command defaults to the previous weekday. For a specific trading date:
 
 ```powershell
@@ -149,6 +158,7 @@ Ingest NSE derivatives EOD:
 
 ```powershell
 iee ingest-derivatives-eod --trade-date 2026-04-24
+iee backfill-derivatives-eod --from-date 2026-01-01 --to-date 2026-04-28
 ```
 
 The command reads the NSE F&O bhavcopy archive, stores the raw artifact, writes `derivatives_eod/trade_date_*.parquet`,
@@ -206,6 +216,16 @@ Check local output health without running network jobs:
 ```powershell
 iee engine-status
 ```
+
+Check one stock and its coverage gaps:
+
+```powershell
+iee stock QUESS
+iee coverage QUESS
+```
+
+`stock` resolves NSE symbols, BSE codes, ISINs, or internal `instrument_id` values and returns the latest snapshot,
+scores, and coverage summary. `coverage` focuses on data gaps by component.
 
 ## Convenience operating flows
 

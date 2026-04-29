@@ -56,6 +56,31 @@ def test_api_reads_snapshot_and_scores_from_parquet(tmp_path: Path) -> None:
             ),
         ]
     )
+    ParquetStore(settings.silver_root).write_current_records(
+        [
+            NormalizedRecord(
+                table_name="instruments",
+                row={
+                    "instrument_id": "INS_1",
+                    "isin": "INE000A01011",
+                    "legal_name": "Example Industries Ltd",
+                    "issuer_name": "Example Industries",
+                    "sector_name": "Capital Goods",
+                    "industry_name": "Industrial Machinery",
+                },
+            ),
+            NormalizedRecord(
+                table_name="listings",
+                row={
+                    "listing_id": "L1",
+                    "instrument_id": "INS_1",
+                    "exchange_code": "NSE",
+                    "symbol": "EXAMPLE",
+                    "bse_scrip_code": None,
+                },
+            ),
+        ]
+    )
     client = TestClient(create_app(settings))
 
     health = client.get("/health")
@@ -77,6 +102,14 @@ def test_api_reads_snapshot_and_scores_from_parquet(tmp_path: Path) -> None:
     score_response = client.get("/scores/INS_1", params={"as_of_date": "2026-04-28"})
     assert score_response.status_code == 200
     assert score_response.json()["rows"][0]["classification"] == "bullish"
+
+    stock_response = client.get("/stocks/EXAMPLE", params={"as_of_date": "2026-04-28"})
+    assert stock_response.status_code == 200
+    assert stock_response.json()["instrument"]["instrument_id"] == "INS_1"
+
+    coverage_response = client.get("/coverage/EXAMPLE", params={"as_of_date": "2026-04-28"})
+    assert coverage_response.status_code == 200
+    assert coverage_response.json()["components"]["technical"]["ok"] is False
 
 
 def test_api_rejects_bad_dates_and_unknown_jobs(tmp_path: Path) -> None:

@@ -14,6 +14,10 @@ from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.schemas.contracts import JobRunResult
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.observability.job_log import record_job_run, utc_now
+from india_equity_engine.pipelines.backfill_eod import (
+    backfill_derivatives_eod,
+    backfill_market_eod,
+)
 from india_equity_engine.pipelines.backup_local_data import backup_local_data
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_governance_events import build_governance_events
@@ -38,6 +42,7 @@ from india_equity_engine.pipelines.refresh_universe import refresh_universe
 from india_equity_engine.pipelines.run_data_quality_review import run_data_quality_review
 from india_equity_engine.pipelines.run_weekly_maintenance import run_weekly_maintenance
 from india_equity_engine.pipelines.score_snapshots import score_snapshots
+from india_equity_engine.pipelines.stock_lookup import coverage_diagnostics, stock_lookup
 from india_equity_engine.storage.registry import SourceRegistry
 
 app = typer.Typer(help="India Equity Research Engine")
@@ -145,6 +150,64 @@ def ingest_derivatives_eod_command(
     settings = Settings.load(config_dir)
     parsed_trade_date = _parse_trade_date_option(trade_date)
     _run_and_echo(settings, lambda: ingest_derivatives_eod(settings, trade_date=parsed_trade_date))
+
+
+@app.command("backfill-market-eod")
+def backfill_market_eod_command(
+    from_date: Annotated[str, typer.Option(help="Start date in YYYY-MM-DD format.")],
+    to_date: Annotated[str, typer.Option(help="End date in YYYY-MM-DD format.")],
+    stop_on_failure: Annotated[
+        bool,
+        typer.Option(
+            "--stop-on-failure/--continue-on-failure",
+            help="Stop after first failed date.",
+        ),
+    ] = False,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Backfill NSE cash-market EOD prices over a date range."""
+
+    settings = Settings.load(config_dir)
+    parsed_from = _parse_required_date(from_date, "from-date")
+    parsed_to = _parse_required_date(to_date, "to-date")
+    _run_and_echo(
+        settings,
+        lambda: backfill_market_eod(
+            settings,
+            from_date=parsed_from,
+            to_date=parsed_to,
+            continue_on_failure=not stop_on_failure,
+        ),
+    )
+
+
+@app.command("backfill-derivatives-eod")
+def backfill_derivatives_eod_command(
+    from_date: Annotated[str, typer.Option(help="Start date in YYYY-MM-DD format.")],
+    to_date: Annotated[str, typer.Option(help="End date in YYYY-MM-DD format.")],
+    stop_on_failure: Annotated[
+        bool,
+        typer.Option(
+            "--stop-on-failure/--continue-on-failure",
+            help="Stop after first failed date.",
+        ),
+    ] = False,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Backfill NSE derivatives EOD rows over a date range."""
+
+    settings = Settings.load(config_dir)
+    parsed_from = _parse_required_date(from_date, "from-date")
+    parsed_to = _parse_required_date(to_date, "to-date")
+    _run_and_echo(
+        settings,
+        lambda: backfill_derivatives_eod(
+            settings,
+            from_date=parsed_from,
+            to_date=parsed_to,
+            continue_on_failure=not stop_on_failure,
+        ),
+    )
 
 
 @app.command("ingest-disclosures")
@@ -418,6 +481,48 @@ def score_snapshots_command(
     settings = Settings.load(config_dir)
     parsed_as_of_date = _parse_trade_date_option(as_of_date)
     _run_and_echo(settings, lambda: score_snapshots(settings, as_of_date=parsed_as_of_date))
+
+
+@app.command("stock")
+def stock_command(
+    symbol_or_id: Annotated[str, typer.Argument(help="NSE/BSE symbol, ISIN, or instrument id.")],
+    as_of_date: Annotated[
+        str | None,
+        typer.Option(help="Optional snapshot date in YYYY-MM-DD format."),
+    ] = None,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Show snapshot, scores, and coverage for one stock."""
+
+    settings = Settings.load(config_dir)
+    parsed_as_of_date = _parse_trade_date_option(as_of_date)
+    typer.echo(
+        json.dumps(
+            stock_lookup(settings, symbol_or_id, as_of_date=parsed_as_of_date),
+            indent=2,
+        )
+    )
+
+
+@app.command("coverage")
+def coverage_command(
+    symbol_or_id: Annotated[str, typer.Argument(help="NSE/BSE symbol, ISIN, or instrument id.")],
+    as_of_date: Annotated[
+        str | None,
+        typer.Option(help="Optional score date in YYYY-MM-DD format."),
+    ] = None,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Explain data coverage gaps for one stock."""
+
+    settings = Settings.load(config_dir)
+    parsed_as_of_date = _parse_trade_date_option(as_of_date)
+    typer.echo(
+        json.dumps(
+            coverage_diagnostics(settings, symbol_or_id, as_of_date=parsed_as_of_date),
+            indent=2,
+        )
+    )
 
 
 @app.command("build-stock-snapshots")
@@ -809,6 +914,13 @@ def _parse_trade_date_option(value: str | None) -> date | None:
         return datetime.strptime(value, "%Y-%m-%d").date()
     except ValueError as exc:
         raise typer.BadParameter("Use YYYY-MM-DD format, for example 2026-04-24.") from exc
+
+
+def _parse_required_date(value: str, option_name: str) -> date:
+    parsed = _parse_trade_date_option(value)
+    if parsed is None:
+        raise typer.BadParameter(f"{option_name} is required.")
+    return parsed
 
 
 def _run_and_echo(settings: Settings, func: Callable[[], JobRunResult]) -> None:

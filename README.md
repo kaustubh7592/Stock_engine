@@ -73,6 +73,13 @@ iee ingest-market-eod --trade-date 2026-04-24
 iee ingest-derivatives-eod --trade-date 2026-04-24
 ```
 
+Backfill EOD data over a date range:
+
+```powershell
+iee backfill-market-eod --from-date 2026-01-01 --to-date 2026-04-28
+iee backfill-derivatives-eod --from-date 2026-01-01 --to-date 2026-04-28
+```
+
 Run the NSE corporate announcements pipeline:
 
 ```powershell
@@ -115,6 +122,13 @@ Run the Step 9 deterministic scoring engine:
 
 ```powershell
 iee score-snapshots
+```
+
+Check one stock by NSE symbol, BSE code, ISIN, or instrument id:
+
+```powershell
+iee stock QUESS
+iee coverage QUESS
 ```
 
 Run the Step 10 stock snapshot and explanation layer:

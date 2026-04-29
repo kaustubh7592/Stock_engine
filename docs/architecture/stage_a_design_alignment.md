@@ -30,6 +30,8 @@ This note tracks the current implementation against the Stage A design document,
 - Decision layer: `score-snapshots` now emits peer score, conflicts, abstain reasons, missing components, and
   deterministic driver/risk JSON; snapshots and explanations consume those fields directly.
 - Operating polish: `iee engine-status` and `/engine-status` summarize local table health and generated outputs.
+- Usability layer: range backfill commands plus symbol-based stock and coverage lookup make the local engine easier
+  to feed and inspect.
 
 ## Intentional Current Limits
 
