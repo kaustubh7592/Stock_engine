@@ -18,6 +18,8 @@ This note tracks the current implementation against the Stage A design document,
 - CLI operations: individual job commands exist, plus `run-daily` and `run-hourly-events` for the operating model.
 - Local API: FastAPI exposes health checks, stock snapshot lookup, score lookup, and synchronous local job triggers.
 - Runbooks: setup, source troubleshooting, daily/hourly flows, and API usage are documented.
+- Observability: orchestrated jobs are logged into `job_runs`, warnings are emitted into `data_quality_issues`, and
+  `run-data-quality-review` checks duplicate keys, missing fields, missing current tables, and stale table dates.
 
 ## Intentional Current Limits
 
@@ -28,8 +30,8 @@ This note tracks the current implementation against the Stage A design document,
   exposure metadata are added.
 - The LLM backend is a schema-validated local renderer. An Ollama or llama.cpp adapter can replace it later without
   changing the `stock_snapshot` contract.
-- Durable observability tables such as `job_runs` and `data_quality_issues` are not yet implemented. For now, each
-  command returns JSON job summaries and tests cover core parsers/pipelines.
+- Observability is intentionally local and simple. Prometheus/Grafana-style metrics and automatic issue resolution
+  workflows are later hardening, not Stage A blockers.
 
 ## Operating Fit
 
@@ -39,4 +41,5 @@ The current Step 11 implementation matches the document's local operations model
 - Hourly event refresh can be driven by `iee run-hourly-events`.
 - Windows Task Scheduler can call those commands directly.
 - The local API can query snapshots and trigger bounded jobs without requiring a cloud service.
+- Weekly data-quality review can be driven by `iee run-data-quality-review`.
 - Data and generated artifacts remain outside Git, which keeps the repository small and reproducible.

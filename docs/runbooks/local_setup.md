@@ -217,11 +217,24 @@ iee run-hourly-events --include-gdelt --refresh-snapshots --snapshot-limit 5000 
 Each convenience command prints a single JSON job result with nested step results. A failed network source is
 reported in that JSON instead of hiding which step failed.
 
+Run the data-quality and observability review:
+
+```powershell
+iee run-data-quality-review
+```
+
+This writes `job_runs/current.parquet` and `data_quality_issues/current.parquet` under `data/gold/`, refreshes the
+matching DuckDB views where the local DuckDB lock allows it, and records issues such as missing current tables,
+duplicate primary keys, missing required fields, stale dates, and job warnings. For append-style tables such as
+dated `price_daily` Parquet files, the review checks the latest available Parquet file when no `current.parquet`
+exists.
+
 For Windows Task Scheduler, call the thin wrappers:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run-daily.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-hourly-events.ps1 -SkipGdelt
+powershell -ExecutionPolicy Bypass -File scripts/run-data-quality-review.ps1
 ```
 
 ## Local API
@@ -239,6 +252,8 @@ curl.exe http://127.0.0.1:8000/health
 curl.exe "http://127.0.0.1:8000/snapshots?limit=10"
 curl.exe "http://127.0.0.1:8000/snapshots/INS_1"
 curl.exe "http://127.0.0.1:8000/scores/INS_1"
+curl.exe "http://127.0.0.1:8000/job-runs"
+curl.exe "http://127.0.0.1:8000/quality-issues"
 ```
 
 The API reads current Parquet outputs first and falls back to DuckDB views when needed. It can also trigger a small
@@ -247,6 +262,7 @@ set of local jobs synchronously, for example:
 ```powershell
 curl.exe -X POST "http://127.0.0.1:8000/jobs/build-stock-snapshots/run?limit=25"
 curl.exe -X POST "http://127.0.0.1:8000/jobs/explain-snapshots/run?limit=5"
+curl.exe -X POST "http://127.0.0.1:8000/jobs/run-data-quality-review/run"
 ```
 
 ## HTTP proxy troubleshooting

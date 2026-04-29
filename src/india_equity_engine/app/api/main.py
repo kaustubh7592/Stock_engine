@@ -11,11 +11,13 @@ from fastapi import FastAPI, HTTPException, Query
 
 from india_equity_engine import __version__
 from india_equity_engine.core.settings import Settings
+from india_equity_engine.observability.job_log import record_job_run, utc_now
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
 from india_equity_engine.pipelines.compute_features import compute_features
 from india_equity_engine.pipelines.explain_snapshots import explain_snapshots
 from india_equity_engine.pipelines.ingest_news_items import ingest_news_items
+from india_equity_engine.pipelines.run_data_quality_review import run_data_quality_review
 from india_equity_engine.pipelines.score_snapshots import score_snapshots
 
 
@@ -106,6 +108,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Scores not found.")
         return {"count": len(rows), "rows": _json_ready(rows)}
 
+    @app.get("/job-runs")
+    def list_job_runs(
+        limit: int = Query(default=50, ge=1, le=1000),
+    ) -> dict[str, Any]:
+        resolved = active_settings()
+        rows = _query_rows(
+            resolved,
+            f"""
+            select *
+            from {_table_source(resolved, "job_runs")}
+            order by finished_at desc
+            limit ?
+            """,
+            [limit],
+            missing_ok=True,
+        )
+        return {"count": len(rows), "rows": _json_ready(rows)}
+
+    @app.get("/quality-issues")
+    def list_quality_issues(
+        severity: str | None = Query(default=None),
+        resolved_flag: bool | None = Query(default=False),
+        limit: int = Query(default=100, ge=1, le=1000),
+    ) -> dict[str, Any]:
+        resolved = active_settings()
+        rows = _query_rows(
+            resolved,
+            f"""
+            select *
+            from {_table_source(resolved, "data_quality_issues")}
+            where (? is null or severity = ?)
+              and (? is null or resolved_flag = ?)
+            order by detected_at desc
+            limit ?
+            """,
+            [severity, severity, resolved_flag, resolved_flag, limit],
+            missing_ok=True,
+        )
+        return {"count": len(rows), "rows": _json_ready(rows)}
+
     @app.post("/jobs/{job_name}/run")
     def run_job(
         job_name: str,
@@ -117,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         resolved = active_settings()
         parsed_date = _parse_date(as_of_date)
+        started_at = utc_now()
         if job_name == "ingest-news-items":
             result = ingest_news_items(
                 resolved,
@@ -134,9 +177,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             result = build_stock_snapshots(resolved, as_of_date=parsed_date, limit=limit)
         elif job_name == "explain-snapshots":
             result = explain_snapshots(resolved, as_of_date=parsed_date, limit=limit)
+        elif job_name == "run-data-quality-review":
+            result = run_data_quality_review(resolved)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported job: {job_name}")
-        return result.model_dump(mode="json")
+        logged = record_job_run(resolved, result, started_at=started_at, finished_at=utc_now())
+        return logged.model_dump(mode="json")
 
     return app
 
@@ -159,7 +205,13 @@ def _read_parquet_expr(path: Path) -> str:
     return f"read_parquet('{escaped_path}')"
 
 
-def _query_rows(settings: Settings, query: str, params: list[object]) -> list[dict[str, Any]]:
+def _query_rows(
+    settings: Settings,
+    query: str,
+    params: list[object],
+    *,
+    missing_ok: bool = False,
+) -> list[dict[str, Any]]:
     try:
         if settings.duckdb_path.exists():
             con = duckdb.connect(str(settings.duckdb_path), read_only=True)
@@ -170,6 +222,8 @@ def _query_rows(settings: Settings, query: str, params: list[object]) -> list[di
             columns = [column[0] for column in result.description]
             rows = result.fetchall()
     except duckdb.Error as exc:
+        if missing_ok and "does not exist" in str(exc).lower():
+            return []
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return [dict(zip(columns, row, strict=True)) for row in rows]
 

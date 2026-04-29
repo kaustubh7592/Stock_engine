@@ -12,6 +12,7 @@ import typer
 from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.schemas.contracts import JobRunResult
 from india_equity_engine.core.settings import Settings
+from india_equity_engine.observability.job_log import record_job_run, utc_now
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_governance_events import build_governance_events
 from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
@@ -29,6 +30,7 @@ from india_equity_engine.pipelines.parse_financial_facts import parse_financial_
 from india_equity_engine.pipelines.parse_pledge_disclosures import parse_pledge_disclosures
 from india_equity_engine.pipelines.parse_shareholding_pattern import parse_shareholding_pattern
 from india_equity_engine.pipelines.refresh_universe import refresh_universe
+from india_equity_engine.pipelines.run_data_quality_review import run_data_quality_review
 from india_equity_engine.pipelines.score_snapshots import score_snapshots
 from india_equity_engine.storage.registry import SourceRegistry
 
@@ -92,8 +94,7 @@ def refresh_universe_command(
     """Run the first security-master pipeline."""
 
     settings = Settings.load(config_dir)
-    result = refresh_universe(settings)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: refresh_universe(settings))
 
 
 @app.command("ingest-market-eod")
@@ -110,8 +111,7 @@ def ingest_market_eod_command(
 
     settings = Settings.load(config_dir)
     parsed_trade_date = _parse_trade_date_option(trade_date)
-    result = ingest_market_eod(settings, trade_date=parsed_trade_date)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: ingest_market_eod(settings, trade_date=parsed_trade_date))
 
 
 @app.command("ingest-disclosures")
@@ -121,8 +121,7 @@ def ingest_disclosures_command(
     """Run the NSE corporate announcements RSS ingestion pipeline."""
 
     settings = Settings.load(config_dir)
-    result = ingest_disclosures(settings)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: ingest_disclosures(settings))
 
 
 @app.command("ingest-filings")
@@ -132,8 +131,7 @@ def ingest_filings_command(
     """Run the filing discovery ingestion pipeline."""
 
     settings = Settings.load(config_dir)
-    result = ingest_filings(settings)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: ingest_filings(settings))
 
 
 @app.command("ingest-insider-trades")
@@ -166,15 +164,17 @@ def ingest_insider_trades_command(
     parsed_to = _parse_trade_date_option(to_date)
     if parsed_from and parsed_to and parsed_from > parsed_to:
         raise typer.BadParameter("from-date must be on or before to-date.")
-    result = ingest_insider_trades(
+    _run_and_echo(
         settings,
-        from_date=parsed_from,
-        to_date=parsed_to,
-        lookback_days=lookback_days,
-        index=index,
-        symbol=symbol,
+        lambda: ingest_insider_trades(
+            settings,
+            from_date=parsed_from,
+            to_date=parsed_to,
+            lookback_days=lookback_days,
+            index=index,
+            symbol=symbol,
+        ),
     )
-    typer.echo(result.model_dump_json(indent=2))
 
 
 @app.command("ingest-macro-series")
@@ -184,8 +184,7 @@ def ingest_macro_series_command(
     """Run the RBI macro/rates ingestion pipeline."""
 
     settings = Settings.load(config_dir)
-    result = ingest_macro_series(settings)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: ingest_macro_series(settings))
 
 
 @app.command("ingest-market-flows")
@@ -195,8 +194,7 @@ def ingest_market_flows_command(
     """Run the NSDL FPI market-flow ingestion pipeline."""
 
     settings = Settings.load(config_dir)
-    result = ingest_market_flows(settings)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: ingest_market_flows(settings))
 
 
 @app.command("ingest-news-items")
@@ -226,14 +224,16 @@ def ingest_news_items_command(
     if gdelt_max_records < 1:
         raise typer.BadParameter("gdelt-max-records must be at least 1.")
     settings = Settings.load(config_dir)
-    result = ingest_news_items(
+    _run_and_echo(
         settings,
-        include_gdelt=include_gdelt,
-        include_official_pages=include_official_pages,
-        gdelt_query=gdelt_query,
-        gdelt_max_records=gdelt_max_records,
+        lambda: ingest_news_items(
+            settings,
+            include_gdelt=include_gdelt,
+            include_official_pages=include_official_pages,
+            gdelt_query=gdelt_query,
+            gdelt_max_records=gdelt_max_records,
+        ),
     )
-    typer.echo(result.model_dump_json(indent=2))
 
 
 @app.command("download-filings")
@@ -257,13 +257,15 @@ def download_filings_command(
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
     parsed_types = tuple(part.strip().upper() for part in document_types.split(",") if part.strip())
-    result = download_filings(
+    _run_and_echo(
         settings,
-        document_types=parsed_types,
-        filing_family=filing_family,
-        limit=limit,
+        lambda: download_filings(
+            settings,
+            document_types=parsed_types,
+            filing_family=filing_family,
+            limit=limit,
+        ),
     )
-    typer.echo(result.model_dump_json(indent=2))
 
 
 @app.command("parse-financial-facts")
@@ -279,8 +281,7 @@ def parse_financial_facts_command(
     settings = Settings.load(config_dir)
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
-    result = parse_financial_facts(settings, limit=limit)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: parse_financial_facts(settings, limit=limit))
 
 
 @app.command("parse-shareholding-pattern")
@@ -293,8 +294,7 @@ def parse_shareholding_pattern_command(
     settings = Settings.load(config_dir)
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
-    result = parse_shareholding_pattern(settings, limit=limit)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: parse_shareholding_pattern(settings, limit=limit))
 
 
 @app.command("parse-pledge-disclosures")
@@ -307,8 +307,7 @@ def parse_pledge_disclosures_command(
     settings = Settings.load(config_dir)
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
-    result = parse_pledge_disclosures(settings, limit=limit)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: parse_pledge_disclosures(settings, limit=limit))
 
 
 @app.command("build-governance-events")
@@ -321,8 +320,7 @@ def build_governance_events_command(
     settings = Settings.load(config_dir)
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
-    result = build_governance_events(settings, limit=limit)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: build_governance_events(settings, limit=limit))
 
 
 @app.command("build-event-signals")
@@ -335,8 +333,7 @@ def build_event_signals_command(
     settings = Settings.load(config_dir)
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
-    result = build_event_signals(settings, limit=limit)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: build_event_signals(settings, limit=limit))
 
 
 @app.command("compute-features")
@@ -360,12 +357,14 @@ def compute_features_command(
     settings = Settings.load(config_dir)
     parsed_as_of_date = _parse_trade_date_option(as_of_date)
     parsed_families = tuple(part.strip() for part in families.split(",") if part.strip())
-    result = compute_features(
+    _run_and_echo(
         settings,
-        as_of_date=parsed_as_of_date,
-        families=parsed_families,
+        lambda: compute_features(
+            settings,
+            as_of_date=parsed_as_of_date,
+            families=parsed_families,
+        ),
     )
-    typer.echo(result.model_dump_json(indent=2))
 
 
 @app.command("score-snapshots")
@@ -382,8 +381,7 @@ def score_snapshots_command(
 
     settings = Settings.load(config_dir)
     parsed_as_of_date = _parse_trade_date_option(as_of_date)
-    result = score_snapshots(settings, as_of_date=parsed_as_of_date)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(settings, lambda: score_snapshots(settings, as_of_date=parsed_as_of_date))
 
 
 @app.command("build-stock-snapshots")
@@ -403,8 +401,10 @@ def build_stock_snapshots_command(
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
     parsed_as_of_date = _parse_trade_date_option(as_of_date)
-    result = build_stock_snapshots(settings, as_of_date=parsed_as_of_date, limit=limit)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(
+        settings,
+        lambda: build_stock_snapshots(settings, as_of_date=parsed_as_of_date, limit=limit),
+    )
 
 
 @app.command("explain-snapshots")
@@ -424,8 +424,28 @@ def explain_snapshots_command(
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
     parsed_as_of_date = _parse_trade_date_option(as_of_date)
-    result = explain_snapshots(settings, as_of_date=parsed_as_of_date, limit=limit)
-    typer.echo(result.model_dump_json(indent=2))
+    _run_and_echo(
+        settings,
+        lambda: explain_snapshots(settings, as_of_date=parsed_as_of_date, limit=limit),
+    )
+
+
+@app.command("run-data-quality-review")
+def run_data_quality_review_command(
+    max_age_days: Annotated[
+        int | None,
+        typer.Option(
+            help="Override table freshness threshold in days for tables with freshness rules.",
+        ),
+    ] = None,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run local data-quality and observability checks."""
+
+    if max_age_days is not None and max_age_days < 1:
+        raise typer.BadParameter("max-age-days must be at least 1.")
+    settings = Settings.load(config_dir)
+    _run_and_echo(settings, lambda: run_data_quality_review(settings, max_age_days=max_age_days))
 
 
 @app.command("run-daily")
@@ -465,35 +485,47 @@ def run_daily_command(
     if explanation_limit < 1:
         raise typer.BadParameter("explanation-limit must be at least 1.")
     settings = Settings.load(config_dir)
+    command_started_at = utc_now()
     parsed_as_of_date = _parse_trade_date_option(as_of_date)
     results: list[JobRunResult] = []
 
     if include_live_ingest:
         results.extend(
             [
-                _run_step("refresh_universe", lambda: refresh_universe(settings)),
+                _run_step(settings, "refresh_universe", lambda: refresh_universe(settings)),
                 _run_step(
+                    settings,
                     "ingest_market_eod",
                     lambda: ingest_market_eod(settings, trade_date=parsed_as_of_date),
                 ),
-                _run_step("ingest_disclosures", lambda: ingest_disclosures(settings)),
-                _run_step("ingest_filings", lambda: ingest_filings(settings)),
-                _run_step("ingest_insider_trades", lambda: ingest_insider_trades(settings)),
-                _run_step("ingest_macro_series", lambda: ingest_macro_series(settings)),
-                _run_step("ingest_market_flows", lambda: ingest_market_flows(settings)),
+                _run_step(settings, "ingest_disclosures", lambda: ingest_disclosures(settings)),
+                _run_step(settings, "ingest_filings", lambda: ingest_filings(settings)),
+                _run_step(
+                    settings,
+                    "ingest_insider_trades",
+                    lambda: ingest_insider_trades(settings),
+                ),
+                _run_step(settings, "ingest_macro_series", lambda: ingest_macro_series(settings)),
+                _run_step(settings, "ingest_market_flows", lambda: ingest_market_flows(settings)),
             ]
         )
 
     if include_filing_processing:
         results.extend(
             [
-                _run_step("download_filings", lambda: download_filings(settings)),
-                _run_step("parse_financial_facts", lambda: parse_financial_facts(settings)),
+                _run_step(settings, "download_filings", lambda: download_filings(settings)),
                 _run_step(
+                    settings,
+                    "parse_financial_facts",
+                    lambda: parse_financial_facts(settings),
+                ),
+                _run_step(
+                    settings,
                     "parse_shareholding_pattern",
                     lambda: parse_shareholding_pattern(settings),
                 ),
                 _run_step(
+                    settings,
                     "parse_pledge_disclosures",
                     lambda: parse_pledge_disclosures(settings),
                 ),
@@ -502,16 +534,23 @@ def run_daily_command(
 
     results.extend(
         [
-            _run_step("build_governance_events", lambda: build_governance_events(settings)),
             _run_step(
+                settings,
+                "build_governance_events",
+                lambda: build_governance_events(settings),
+            ),
+            _run_step(
+                settings,
                 "compute_features",
                 lambda: compute_features(settings, as_of_date=parsed_as_of_date),
             ),
             _run_step(
+                settings,
                 "score_snapshots",
                 lambda: score_snapshots(settings, as_of_date=parsed_as_of_date),
             ),
             _run_step(
+                settings,
                 "build_stock_snapshots",
                 lambda: build_stock_snapshots(
                     settings,
@@ -520,6 +559,7 @@ def run_daily_command(
                 ),
             ),
             _run_step(
+                settings,
                 "explain_snapshots",
                 lambda: explain_snapshots(
                     settings,
@@ -529,7 +569,14 @@ def run_daily_command(
             ),
         ]
     )
-    typer.echo(_combined_result("run_daily", results).model_dump_json(indent=2))
+    combined = _combined_result("run_daily", results)
+    logged = record_job_run(
+        settings,
+        combined,
+        started_at=command_started_at,
+        finished_at=utc_now(),
+    )
+    typer.echo(logged.model_dump_json(indent=2))
 
 
 @app.command("run-hourly-events")
@@ -581,8 +628,10 @@ def run_hourly_events_command(
     if explanation_limit < 1:
         raise typer.BadParameter("explanation-limit must be at least 1.")
     settings = Settings.load(config_dir)
+    command_started_at = utc_now()
     results = [
         _run_step(
+            settings,
             "ingest_news_items",
             lambda: ingest_news_items(
                 settings,
@@ -592,6 +641,7 @@ def run_hourly_events_command(
             ),
         ),
         _run_step(
+            settings,
             "build_event_signals",
             lambda: build_event_signals(settings, limit=event_signal_limit),
         ),
@@ -600,19 +650,28 @@ def run_hourly_events_command(
     if refresh_snapshots:
         results.extend(
             [
-                _run_step("compute_features", lambda: compute_features(settings)),
-                _run_step("score_snapshots", lambda: score_snapshots(settings)),
+                _run_step(settings, "compute_features", lambda: compute_features(settings)),
+                _run_step(settings, "score_snapshots", lambda: score_snapshots(settings)),
                 _run_step(
+                    settings,
                     "build_stock_snapshots",
                     lambda: build_stock_snapshots(settings, limit=snapshot_limit),
                 ),
                 _run_step(
+                    settings,
                     "explain_snapshots",
                     lambda: explain_snapshots(settings, limit=explanation_limit),
                 ),
             ]
         )
-    typer.echo(_combined_result("run_hourly_events", results).model_dump_json(indent=2))
+    combined = _combined_result("run_hourly_events", results)
+    logged = record_job_run(
+        settings,
+        combined,
+        started_at=command_started_at,
+        finished_at=utc_now(),
+    )
+    typer.echo(logged.model_dump_json(indent=2))
 
 
 def _parse_trade_date_option(value: str | None) -> date | None:
@@ -624,11 +683,24 @@ def _parse_trade_date_option(value: str | None) -> date | None:
         raise typer.BadParameter("Use YYYY-MM-DD format, for example 2026-04-24.") from exc
 
 
-def _run_step(job_name: str, func: Callable[[], JobRunResult]) -> JobRunResult:
+def _run_and_echo(settings: Settings, func: Callable[[], JobRunResult]) -> None:
+    started_at = utc_now()
+    result = func()
+    logged = record_job_run(settings, result, started_at=started_at, finished_at=utc_now())
+    typer.echo(logged.model_dump_json(indent=2))
+
+
+def _run_step(
+    settings: Settings,
+    job_name: str,
+    func: Callable[[], JobRunResult],
+) -> JobRunResult:
+    started_at = utc_now()
     try:
-        return func()
+        result = func()
     except Exception as exc:  # noqa: BLE001 - orchestration should report all step failures.
-        return JobRunResult(job_name=job_name, status="failed", warnings=[str(exc)])
+        result = JobRunResult(job_name=job_name, status="failed", warnings=[str(exc)])
+    return record_job_run(settings, result, started_at=started_at, finished_at=utc_now())
 
 
 def _combined_result(job_name: str, results: list[JobRunResult]) -> JobRunResult:

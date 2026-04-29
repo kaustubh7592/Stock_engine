@@ -5,8 +5,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from india_equity_engine.app.api.main import create_app
-from india_equity_engine.core.schemas.contracts import NormalizedRecord
+from india_equity_engine.core.schemas.contracts import JobRunResult, NormalizedRecord
 from india_equity_engine.core.settings import Settings
+from india_equity_engine.observability.job_log import record_job_run
 from india_equity_engine.storage.parquet_store import ParquetStore
 
 
@@ -79,6 +80,29 @@ def test_api_rejects_bad_dates_and_unknown_jobs(tmp_path: Path) -> None:
 
     assert client.get("/snapshots", params={"as_of_date": "28-04-2026"}).status_code == 422
     assert client.post("/jobs/not-real/run").status_code == 400
+
+
+def test_api_lists_observability_tables(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    record_job_run(
+        settings,
+        JobRunResult(
+            job_name="example_job",
+            status="partial_success",
+            warnings=["example warning"],
+        ),
+        started_at=datetime(2026, 4, 29, 10, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 4, 29, 10, 1, tzinfo=timezone.utc),
+    )
+    client = TestClient(create_app(settings))
+
+    jobs = client.get("/job-runs")
+    issues = client.get("/quality-issues")
+
+    assert jobs.status_code == 200
+    assert jobs.json()["rows"][0]["job_name"] == "example_job"
+    assert issues.status_code == 200
+    assert issues.json()["rows"][0]["rule_name"] == "job_warning"
 
 
 def _settings(tmp_path: Path) -> Settings:

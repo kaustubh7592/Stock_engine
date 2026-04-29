@@ -118,6 +118,12 @@ iee run-daily --skip-live-ingest --snapshot-limit 5000 --explanation-limit 100
 iee run-hourly-events --include-gdelt --skip-snapshots
 ```
 
+Run the Step 12 data-quality and observability review:
+
+```powershell
+iee run-data-quality-review
+```
+
 Windows Task Scheduler can call the thin wrappers in `scripts/run-daily.ps1` and
 `scripts/run-hourly-events.ps1`.
 
@@ -137,8 +143,11 @@ Useful local endpoints:
 - `GET /snapshots?as_of_date=2026-04-28&limit=50`
 - `GET /snapshots/{instrument_id}`
 - `GET /scores/{instrument_id}?as_of_date=2026-04-28`
+- `GET /job-runs`
+- `GET /quality-issues`
 - `POST /jobs/{job_name}/run`, where `job_name` is one of `ingest-news-items`, `build-event-signals`,
-  `compute-features`, `score-snapshots`, `build-stock-snapshots`, or `explain-snapshots`
+  `compute-features`, `score-snapshots`, `build-stock-snapshots`, `explain-snapshots`, or
+  `run-data-quality-review`
 
 Download structured filing artifacts for later XBRL parsing:
 
@@ -199,6 +208,8 @@ The refresh currently builds:
 - `score_snapshots`
 - `stock_snapshots`
 - `llm_explanations`
+- `job_runs`
+- `data_quality_issues`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
