@@ -25,6 +25,8 @@ This note tracks the current implementation against the Stage A design document,
 - Derivatives EOD: `ingest-derivatives-eod` normalizes NSE F&O bhavcopy rows into `derivatives_eod`, and the feature
   plus scoring layers now use conservative OI/volume-derived derivatives signals.
 - MoSPI macro releases: `ingest-macro-series` now includes MoSPI latest releases alongside RBI current rates.
+- Feature families: `compute-features` now covers technical, governance, fundamental, macro/FPI-flow, derivatives,
+  event/news carryover, and peer-relative feature families with explicit missing-coverage behavior.
 
 ## Intentional Current Limits
 

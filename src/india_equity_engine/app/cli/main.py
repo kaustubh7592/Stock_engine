@@ -369,9 +369,12 @@ def compute_features_command(
     families: Annotated[
         str,
         typer.Option(
-            help="Comma-separated families: technical,governance,fundamental,macro,derivatives.",
+            help=(
+                "Comma-separated families: "
+                "technical,governance,fundamental,macro,derivatives,event,peer."
+            ),
         ),
-    ] = "technical,governance,fundamental,macro,derivatives",
+    ] = "technical,governance,fundamental,macro,derivatives,event,peer",
     config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
 ) -> None:
     """Compute Stage A deterministic feature snapshots."""

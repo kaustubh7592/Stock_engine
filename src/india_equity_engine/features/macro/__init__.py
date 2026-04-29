@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from india_equity_engine.core.schemas.contracts import NormalizedRecord
-from india_equity_engine.features.common import date_or_none, feature_record, latest_available_at
+from india_equity_engine.features.common import (
+    date_or_none,
+    decimal_or_none,
+    feature_record,
+    latest_available_at,
+)
 
 MACRO_SERIES_FEATURES = {
     "repo": "macro_policy_repo_rate_latest",
@@ -18,10 +24,11 @@ MACRO_SERIES_FEATURES = {
 
 def compute_macro_features(
     macro_rows: list[dict[str, object]],
+    market_flow_rows: list[dict[str, object]],
     instrument_ids: list[str],
     as_of_date: date,
 ) -> list[NormalizedRecord]:
-    """Replicate broad macro-regime features to each instrument in the local universe."""
+    """Replicate broad macro and flow-regime features to each instrument in the universe."""
 
     latest_by_feature: dict[str, dict[str, object]] = {}
     for row in macro_rows:
@@ -55,6 +62,23 @@ def compute_macro_features(
                     parser_version=_text(row.get("parser_version")),
                 )
             )
+        for feature_name, value, available_at in _market_flow_features(
+            market_flow_rows,
+            as_of_date,
+        ):
+            output.append(
+                feature_record(
+                    instrument_id=instrument_id,
+                    as_of_date=as_of_date,
+                    horizon="medium",
+                    feature_family="macro",
+                    feature_name=feature_name,
+                    value_num=value,
+                    coverage_flag=value is not None,
+                    source="market_flows",
+                    available_at=available_at,
+                )
+            )
     return output
 
 
@@ -71,3 +95,60 @@ def _text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _market_flow_features(
+    rows: list[dict[str, object]],
+    as_of_date: date,
+) -> list[tuple[str, Decimal | None, object | None]]:
+    valid_rows = []
+    for row in rows:
+        trade_date = date_or_none(row.get("trade_date"))
+        if trade_date is None or trade_date > as_of_date:
+            continue
+        if str(row.get("investor_class") or "").upper() != "FPI":
+            continue
+        valid_rows.append(row)
+    if not valid_rows:
+        return []
+
+    latest_date = max(date_or_none(row.get("trade_date")) or date.min for row in valid_rows)
+    latest_rows = [row for row in valid_rows if date_or_none(row.get("trade_date")) == latest_date]
+    trade_dates = {
+        date_or_none(row.get("trade_date"))
+        for row in valid_rows
+        if date_or_none(row.get("trade_date"))
+    }
+    last_five_dates = sorted(trade_dates, reverse=True)[:5]
+    last_five_rows = [
+        row for row in valid_rows if date_or_none(row.get("trade_date")) in set(last_five_dates)
+    ]
+    return [
+        (
+            "macro_fpi_total_net_flow_latest",
+            _sum_net_flow(latest_rows),
+            latest_available_at(latest_rows),
+        ),
+        (
+            "macro_fpi_equity_net_flow_latest",
+            _sum_net_flow([row for row in latest_rows if _is_equity_segment(row)]),
+            latest_available_at(latest_rows),
+        ),
+        (
+            "macro_fpi_total_net_flow_5d",
+            _sum_net_flow(last_five_rows),
+            latest_available_at(last_five_rows),
+        ),
+    ]
+
+
+def _sum_net_flow(rows: list[dict[str, object]]) -> Decimal | None:
+    values = [decimal_or_none(row.get("net_flow")) for row in rows]
+    values = [value for value in values if value is not None]
+    if not values:
+        return None
+    return sum(values, Decimal("0"))
+
+
+def _is_equity_segment(row: dict[str, object]) -> bool:
+    return "equity" in str(row.get("segment") or "").lower()

@@ -11,14 +11,24 @@ from india_equity_engine.core.schemas.contracts import JobRunResult, NormalizedR
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.features.common import add_cross_section_stats, date_or_none
 from india_equity_engine.features.derivatives import compute_derivatives_features
+from india_equity_engine.features.events import compute_event_features
 from india_equity_engine.features.fundamentals import compute_fundamental_features
 from india_equity_engine.features.governance import compute_governance_features
 from india_equity_engine.features.macro import compute_macro_features
+from india_equity_engine.features.peer import compute_peer_features
 from india_equity_engine.features.technical import compute_technical_features
 from india_equity_engine.storage.duckdb_store import DuckDBStore
 from india_equity_engine.storage.parquet_store import ParquetStore
 
-DEFAULT_FEATURE_FAMILIES = ("technical", "governance", "fundamental", "macro", "derivatives")
+DEFAULT_FEATURE_FAMILIES = (
+    "technical",
+    "governance",
+    "fundamental",
+    "macro",
+    "derivatives",
+    "event",
+    "peer",
+)
 
 
 def compute_features(
@@ -91,15 +101,23 @@ def compute_features(
 
     if "macro" in requested_families:
         macro_rows = _query_rows(settings, _macro_series_query(), [resolved_as_of_date])
+        market_flow_rows = _query_rows(settings, _market_flows_query(), [resolved_as_of_date])
         instrument_rows = _query_rows(settings, _instrument_ids_query(), [resolved_as_of_date])
         instrument_ids = [
             str(row["instrument_id"]) for row in instrument_rows if row.get("instrument_id")
         ]
-        records_in += len(macro_rows)
-        if macro_rows and instrument_ids:
-            records.extend(compute_macro_features(macro_rows, instrument_ids, resolved_as_of_date))
-        elif not macro_rows:
-            warnings.append("No macro_series rows found for macro features.")
+        records_in += len(macro_rows) + len(market_flow_rows)
+        if (macro_rows or market_flow_rows) and instrument_ids:
+            records.extend(
+                compute_macro_features(
+                    macro_rows,
+                    market_flow_rows,
+                    instrument_ids,
+                    resolved_as_of_date,
+                )
+            )
+        elif not macro_rows and not market_flow_rows:
+            warnings.append("No macro_series or market_flows rows found for macro features.")
         else:
             warnings.append("No instrument universe found for macro feature replication.")
 
@@ -110,6 +128,32 @@ def compute_features(
             records.extend(compute_derivatives_features(derivatives_rows, resolved_as_of_date))
         else:
             warnings.append("No derivatives_eod rows found for derivatives features.")
+
+    if "event" in requested_families:
+        event_signal_rows = _query_rows(settings, _event_signals_query(), [resolved_as_of_date])
+        instrument_rows = _query_rows(settings, _instrument_sector_query(), [])
+        records_in += len(event_signal_rows)
+        if event_signal_rows and instrument_rows:
+            records.extend(
+                compute_event_features(event_signal_rows, instrument_rows, resolved_as_of_date)
+            )
+        elif not event_signal_rows:
+            warnings.append("No event_signals rows found for event features.")
+        else:
+            warnings.append("No instruments with sector metadata found for event features.")
+
+    if "peer" in requested_families:
+        peer_price_rows = _query_rows(settings, _price_daily_query(), [resolved_as_of_date])
+        instrument_rows = _query_rows(settings, _instrument_sector_query(), [])
+        records_in += len(peer_price_rows)
+        if peer_price_rows and instrument_rows:
+            records.extend(
+                compute_peer_features(peer_price_rows, instrument_rows, resolved_as_of_date)
+            )
+        elif not peer_price_rows:
+            warnings.append("No price_daily rows found for peer features.")
+        else:
+            warnings.append("No instruments with sector metadata found for peer features.")
 
     records = _dedupe_records(add_cross_section_stats(records))
     if not records:
@@ -169,6 +213,10 @@ def _infer_as_of_date(settings: Settings, families: tuple[str, ...]) -> date | N
         candidates.extend(_max_dates(settings, "macro_series", "observation_date"))
     if "derivatives" in families:
         candidates.extend(_max_dates(settings, "derivatives_eod", "trade_date"))
+    if "event" in families:
+        candidates.extend(_max_dates(settings, "event_signals", "event_date"))
+    if "peer" in families:
+        candidates.extend(_max_dates(settings, "price_daily", "trade_date"))
     dates = [value for value in candidates if value is not None]
     return max(dates) if dates else None
 
@@ -325,11 +373,39 @@ def _macro_series_query() -> str:
     """
 
 
+def _market_flows_query() -> str:
+    return """
+        select
+            trade_date,
+            flow_type,
+            segment,
+            investor_class,
+            gross_buy,
+            gross_sell,
+            net_flow,
+            notes,
+            available_at
+        from market_flows
+        where trade_date <= ?
+    """
+
+
 def _instrument_ids_query() -> str:
     return """
         select distinct instrument_id
         from price_daily
         where trade_date <= ?
+    """
+
+
+def _instrument_sector_query() -> str:
+    return """
+        select
+            instrument_id,
+            sector_name,
+            industry_name
+        from instruments
+        where instrument_id is not null
     """
 
 
@@ -350,6 +426,26 @@ def _derivatives_eod_query() -> str:
             available_at
         from derivatives_eod
         where trade_date <= ?
+    """
+
+
+def _event_signals_query() -> str:
+    return """
+        select
+            event_signal_id,
+            news_id,
+            instrument_id,
+            sector_name,
+            event_date,
+            horizon,
+            impact_direction,
+            impact_score,
+            confidence,
+            exposure_channel,
+            rationale_code,
+            available_at
+        from event_signals
+        where event_date <= ?
     """
 
 

@@ -19,8 +19,10 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
     assert result.outputs["feature_families"]["technical"] == 8
     assert result.outputs["feature_families"]["governance"] == 7
     assert result.outputs["feature_families"]["fundamental"] == 18
-    assert result.outputs["feature_families"]["macro"] == 2
+    assert result.outputs["feature_families"]["macro"] == 5
     assert result.outputs["feature_families"]["derivatives"] == 5
+    assert result.outputs["feature_families"]["event"] == 4
+    assert result.outputs["feature_families"]["peer"] == 4
     assert (tmp_path / "data" / "gold" / "feature_snapshots" / "current.parquet").exists()
     with duckdb.connect(str(db_path), read_only=True) as con:
         rows = con.execute(
@@ -34,7 +36,10 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
                 'promoter_pledged_pct_total_equity_latest',
                 'fundamental_debt_to_assets',
                 'macro_cpi_latest',
+                'macro_fpi_total_net_flow_latest',
                 'derivatives_put_call_oi_ratio_latest',
+                'event_net_impact_30d',
+                'peer_return_5d_rank_pct',
                 'shareholding_promoter_pct_change_1p'
               )
             order by feature_name
@@ -47,11 +52,27 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
     assert by_name["return_5d_pct"][2] is not None
     assert by_name["return_5d_pct"][3] is True
     assert by_name["macro_cpi_latest"][2] is not None
+    assert by_name["macro_fpi_total_net_flow_latest"][2] is not None
     assert by_name["derivatives_put_call_oi_ratio_latest"][2] is not None
+    assert by_name["event_net_impact_30d"][2] is not None
+    assert by_name["peer_return_5d_rank_pct"][3] is False
 
 
 def _seed_source_tables(db_path: Path) -> None:
     with duckdb.connect(str(db_path)) as con:
+        con.execute(
+            """
+            create table instruments (
+                instrument_id text,
+                sector_name text,
+                industry_name text
+            )
+            """
+        )
+        con.execute(
+            "insert into instruments values (?, ?, ?)",
+            ("INS_1", "Banks", "Private Banks"),
+        )
         con.execute(
             """
             create table price_daily (
@@ -389,6 +410,48 @@ def _seed_source_tables(db_path: Path) -> None:
         )
         con.execute(
             """
+            create table market_flows (
+                trade_date date,
+                flow_type text,
+                segment text,
+                investor_class text,
+                gross_buy decimal(18,4),
+                gross_sell decimal(18,4),
+                net_flow decimal(18,4),
+                notes text,
+                available_at timestamp
+            )
+            """
+        )
+        con.executemany(
+            "insert into market_flows values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "2026-04-28",
+                    "fpi_net_investment_total",
+                    "equity",
+                    "FPI",
+                    10000,
+                    8000,
+                    2000,
+                    "fixture",
+                    "2026-04-28 18:00:00",
+                ),
+                (
+                    "2026-04-27",
+                    "fpi_net_investment_total",
+                    "debt",
+                    "FPI",
+                    5000,
+                    6000,
+                    -1000,
+                    "fixture",
+                    "2026-04-27 18:00:00",
+                ),
+            ],
+        )
+        con.execute(
+            """
             create table derivatives_eod (
                 contract_id text,
                 instrument_id text,
@@ -451,6 +514,41 @@ def _seed_source_tables(db_path: Path) -> None:
                     "2026-04-28 17:00:00",
                 ),
             ],
+        )
+        con.execute(
+            """
+            create table event_signals (
+                event_signal_id text,
+                news_id text,
+                instrument_id text,
+                sector_name text,
+                event_date date,
+                horizon text,
+                impact_direction text,
+                impact_score decimal(18,4),
+                confidence decimal(18,4),
+                exposure_channel text,
+                rationale_code text,
+                available_at timestamp
+            )
+            """
+        )
+        con.execute(
+            "insert into event_signals values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "evt_1",
+                "news_1",
+                None,
+                "Banks",
+                "2026-04-28",
+                "medium",
+                "mixed",
+                -0.20,
+                0.70,
+                "rates_liquidity",
+                "rates_liquidity_policy",
+                "2026-04-28 12:00:00",
+            ),
         )
 
 

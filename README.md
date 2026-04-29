@@ -271,8 +271,8 @@ instrument mapping can be layered once sector and exposure metadata are richer.
 settlement, open interest, OI change, and contract volume.
 
 `feature_snapshots` is written to the gold layer by `compute-features`. The feature families now include technical,
-governance, fundamental/shareholding, macro-regime, and derivatives features, with explicit `coverage_flag` values
-instead of fake zeros when history or structured facts are missing.
+governance, fundamental/shareholding, macro-regime and FPI-flow, derivatives, event/news carryover, and peer-relative
+features, with explicit `coverage_flag` values instead of fake zeros when history or structured facts are missing.
 
 `score_snapshots` is written to the gold layer by `score-snapshots`. Scores are deterministic: component scores stay
 separate, composite scores use `configs/weights/score_weights.yaml`, and confidence/abstain behavior uses

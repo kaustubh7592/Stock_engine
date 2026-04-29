@@ -191,6 +191,13 @@ The feature step writes `feature_snapshots/current.parquet`; scoring writes
 `data/gold/stock_snapshots/json/`; explanations write schema-validated local explanation outputs under
 `data/gold/llm_outputs/`.
 
+By default `compute-features` now builds technical, governance, fundamental, macro/FPI-flow, derivatives,
+event/news carryover, and peer-relative feature families. To isolate one layer while testing:
+
+```powershell
+iee compute-features --families event,peer
+```
+
 ## Convenience operating flows
 
 Run the local after-close rebuild from existing warehouse data:

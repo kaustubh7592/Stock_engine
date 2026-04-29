@@ -53,7 +53,10 @@ def component_scores_for_instrument(
             grouped.get("macro", []),
             _macro_feature_score,
         ),
-        "event": _event_component_score(event_signal_rows or []),
+        "event": _event_score(
+            grouped.get("event", []),
+            event_signal_rows or [],
+        ),
         "derivatives": _score_feature_group(
             "derivatives",
             grouped.get("derivatives", []),
@@ -205,6 +208,12 @@ def _macro_feature_score(row: dict[str, Any]) -> Decimal | None:
         return _directional_score(value, Decimal("10"))
     if name == "macro_gdp_latest":
         return _directional_score(value - Decimal("4"), Decimal("6"))
+    if name in {
+        "macro_fpi_total_net_flow_latest",
+        "macro_fpi_equity_net_flow_latest",
+        "macro_fpi_total_net_flow_5d",
+    }:
+        return _signed_money_score(value)
     return None
 
 
@@ -224,6 +233,32 @@ def _derivatives_feature_score(row: dict[str, Any]) -> Decimal | None:
     if name == "derivatives_put_call_oi_ratio_latest":
         return Decimal("1") - _bounded((value - Decimal("0.7")) / Decimal("1.3"))
     return None
+
+
+def _event_feature_score(row: dict[str, Any]) -> Decimal | None:
+    name = str(row.get("feature_name") or "")
+    value = decimal_or_none(row.get("value_num"))
+    if value is None:
+        return None
+    if name == "event_net_impact_30d":
+        return _clamp_score(Decimal("0.5") + value)
+    if name == "event_negative_signal_count_30d":
+        return Decimal("1") - _bounded(value / Decimal("5"))
+    if name == "event_positive_signal_count_30d":
+        return _directional_score(value, Decimal("5"))
+    if name == "event_signal_count_30d":
+        return None
+    return None
+
+
+def _event_score(
+    feature_rows: list[dict[str, Any]],
+    event_signal_rows: list[dict[str, Any]],
+) -> ComponentScore:
+    feature_score = _score_feature_group("event", feature_rows, _event_feature_score)
+    if feature_score.score is not None:
+        return feature_score
+    return _event_component_score(event_signal_rows)
 
 
 def _event_component_score(rows: list[dict[str, Any]]) -> ComponentScore:

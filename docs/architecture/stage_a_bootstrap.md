@@ -139,3 +139,12 @@ The derivatives/macro expansion adds `derivatives_eod` and activates macro plus 
   from `derivatives_eod`.
 - `score-snapshots` now has active conservative scoring rules for the macro and derivatives components that were
   already present in the Stage A weight config.
+
+## Stage A Step 16, Step 17, and Step 18 Expansion
+
+The macro/flow, event/news, and feature-family layers now connect more fully.
+
+- `market_flows` contributes FPI total, equity, and 5-day flow features inside the macro feature family.
+- `event_signals` contributes 30-day event carryover features by direct instrument link or sector mapping.
+- `price_daily` plus instrument sector metadata contributes peer-relative rank features where enough valid sector
+  peers exist; otherwise peer features carry `coverage_flag=false` instead of fake ranks.
