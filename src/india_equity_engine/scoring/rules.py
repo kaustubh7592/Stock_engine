@@ -48,9 +48,17 @@ def component_scores_for_instrument(
             grouped.get("fundamental", []),
             _fundamental_feature_score,
         ),
-        "macro": _empty_score("macro"),
+        "macro": _score_feature_group(
+            "macro",
+            grouped.get("macro", []),
+            _macro_feature_score,
+        ),
         "event": _event_component_score(event_signal_rows or []),
-        "derivatives": _empty_score("derivatives"),
+        "derivatives": _score_feature_group(
+            "derivatives",
+            grouped.get("derivatives", []),
+            _derivatives_feature_score,
+        ),
     }
     return scores
 
@@ -179,6 +187,42 @@ def _fundamental_feature_score(row: dict[str, Any]) -> Decimal | None:
         return None
     if name.endswith("_change_1p"):
         return _directional_score(value, Decimal("8"))
+    return None
+
+
+def _macro_feature_score(row: dict[str, Any]) -> Decimal | None:
+    name = str(row.get("feature_name") or "")
+    value = decimal_or_none(row.get("value_num"))
+    if value is None:
+        return None
+    if name == "macro_policy_repo_rate_latest":
+        return Decimal("1") - _bounded((value - Decimal("4")) / Decimal("6"))
+    if name == "macro_reverse_repo_rate_latest":
+        return Decimal("1") - _bounded((value - Decimal("3")) / Decimal("6"))
+    if name == "macro_cpi_latest":
+        return Decimal("1") - _bounded((value - Decimal("2")) / Decimal("6"))
+    if name == "macro_iip_latest":
+        return _directional_score(value, Decimal("10"))
+    if name == "macro_gdp_latest":
+        return _directional_score(value - Decimal("4"), Decimal("6"))
+    return None
+
+
+def _derivatives_feature_score(row: dict[str, Any]) -> Decimal | None:
+    name = str(row.get("feature_name") or "")
+    value = decimal_or_none(row.get("value_num"))
+    if value is None:
+        return None
+    if name == "derivatives_open_interest_latest":
+        return None
+    if name == "derivatives_contract_volume_latest":
+        return None
+    if name == "derivatives_oi_change_latest":
+        return _directional_score(value, Decimal("500000"))
+    if name == "derivatives_oi_change_pct_latest":
+        return _directional_score(value, Decimal("30"))
+    if name == "derivatives_put_call_oi_ratio_latest":
+        return Decimal("1") - _bounded((value - Decimal("0.7")) / Decimal("1.3"))
     return None
 
 

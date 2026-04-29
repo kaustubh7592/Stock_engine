@@ -22,12 +22,12 @@ This note tracks the current implementation against the Stage A design document,
   `run-data-quality-review` checks duplicate keys, missing fields, missing current tables, and stale table dates.
 - Maintenance: `rebuild-duckdb`, `backup-local-data`, and `run-weekly-maintenance` cover the design's local
   rebuild, backup, and weekend operating flow without requiring AWS or another cloud dependency.
+- Derivatives EOD: `ingest-derivatives-eod` normalizes NSE F&O bhavcopy rows into `derivatives_eod`, and the feature
+  plus scoring layers now use conservative OI/volume-derived derivatives signals.
+- MoSPI macro releases: `ingest-macro-series` now includes MoSPI latest releases alongside RBI current rates.
 
 ## Intentional Current Limits
 
-- Derivatives EOD ingestion is not implemented yet, so derivatives scores stay absent/neutral in Stage A outputs.
-- MoSPI macro ingestion is still a future addition; the current macro slice uses RBI current rates and NSDL FPI
-  flows.
 - Event signals are conservative sector/theme signals. Stock-level event linking can improve once richer sector and
   exposure metadata are added.
 - The LLM backend is a schema-validated local renderer. An Ollama or llama.cpp adapter can replace it later without

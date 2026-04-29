@@ -54,10 +54,17 @@ Run the first NSE EOD market pipeline:
 iee ingest-market-eod
 ```
 
+Run the NSE derivatives EOD pipeline:
+
+```powershell
+iee ingest-derivatives-eod
+```
+
 Or specify a trading date:
 
 ```powershell
 iee ingest-market-eod --trade-date 2026-04-24
+iee ingest-derivatives-eod --trade-date 2026-04-24
 ```
 
 Run the NSE corporate announcements pipeline:
@@ -78,7 +85,7 @@ Run the NSE PIT insider-trading pipeline:
 iee ingest-insider-trades --from-date 2026-04-24 --to-date 2026-04-28
 ```
 
-Run the Step 6 macro and flow pipelines:
+Run the macro and flow pipelines:
 
 ```powershell
 iee ingest-macro-series
@@ -247,8 +254,8 @@ price, and post-holding fields with row-level XBRL/source lineage.
 `governance_events` applies conservative rules over announcements, filings, pledge disclosures, and PIT rows to
 surface auditor, board, compliance, dilution, pledge, and insider-activity events for later governance features.
 
-`macro_series` currently ingests RBI's official current-rates panel into policy rates, reserve ratios, exchange
-rates, and market-rate series.
+`macro_series` currently ingests RBI's official current-rates panel and MoSPI latest releases into policy rates,
+reserve ratios, exchange rates, CPI, IIP, GDP, and other single numeric macro observations.
 
 `market_flows` currently ingests NSDL's official daily FPI/FII investment trends into equity, debt, hybrid, and route
 slices.
@@ -260,9 +267,12 @@ event/news rows with source class, geography, novelty, optional source tone, and
 government capex/budget, rural/agriculture, commodities, regulation, election, and geopolitical channels. Stock-level
 instrument mapping can be layered once sector and exposure metadata are richer.
 
-`feature_snapshots` is written to the gold layer by `compute-features`. The first feature families are technical,
-governance, and fundamental/shareholding features, with explicit `coverage_flag` values instead of fake zeros when
-history or structured facts are missing.
+`derivatives_eod` ingests NSE F&O bhavcopy rows at contract/trade-date grain, including segment, expiry, strike,
+settlement, open interest, OI change, and contract volume.
+
+`feature_snapshots` is written to the gold layer by `compute-features`. The feature families now include technical,
+governance, fundamental/shareholding, macro-regime, and derivatives features, with explicit `coverage_flag` values
+instead of fake zeros when history or structured facts are missing.
 
 `score_snapshots` is written to the gold layer by `score-snapshots`. Scores are deterministic: component scores stay
 separate, composite scores use `configs/weights/score_weights.yaml`, and confidence/abstain behavior uses

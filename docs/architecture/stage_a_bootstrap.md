@@ -122,9 +122,20 @@ The final Step 5 slice builds `governance_events` from local canonical disclosur
 
 The first macro/flow slice adds `macro_series` and `market_flows`.
 
-- `ingest-macro-series` reads RBI's official current-rates panel and normalizes policy rates, reserve ratios,
-  exchange rates, and other single-value rates into `macro_series`.
+- `ingest-macro-series` reads RBI's official current-rates panel plus MoSPI latest releases and normalizes policy
+  rates, reserve ratios, exchange rates, CPI, IIP, GDP, and other single-value observations into `macro_series`.
 - `ingest-market-flows` reads NSDL's official daily FPI/FII investment trends page and normalizes gross purchases,
   gross sales, and net flows into `market_flows`.
 - Raw HTML is stored immutably and each normalized row preserves source URL, retrieval time, document hash, and
   parser version.
+
+## Stage A Step 14 and Step 15
+
+The derivatives/macro expansion adds `derivatives_eod` and activates macro plus derivatives feature scoring.
+
+- `ingest-derivatives-eod` reads NSE F&O bhavcopy archives, normalizes one row per contract per trade date, and keeps
+  settlement price, open interest, OI change, and contract volume with source lineage.
+- `compute-features` now builds macro-regime features from `macro_series` and underlying-level derivatives features
+  from `derivatives_eod`.
+- `score-snapshots` now has active conservative scoring rules for the macro and derivatives components that were
+  already present in the Stage A weight config.

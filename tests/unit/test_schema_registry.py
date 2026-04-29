@@ -7,6 +7,7 @@ def test_core_tables_exist() -> None:
         "listings",
         "universe_memberships",
         "price_daily",
+        "derivatives_eod",
         "corporate_announcements",
         "corporate_actions",
         "filings",

@@ -140,9 +140,19 @@ Ingest RBI macro/rates:
 iee ingest-macro-series
 ```
 
-The command reads RBI's official current-rates page, stores the raw HTML, writes `macro_series/current.parquet`,
-and refreshes the DuckDB view. The first slice keeps only single numeric values, such as policy rates, reserve
-ratios, and exchange-rate observations; range values are skipped instead of being silently averaged.
+The command reads RBI's official current-rates page plus MoSPI latest releases, stores the raw HTML, writes
+`macro_series/current.parquet`, and refreshes the DuckDB view. The first slice keeps only single numeric values,
+such as policy rates, reserve ratios, exchange-rate observations, CPI, IIP, and GDP release values; range values
+are skipped instead of being silently averaged.
+
+Ingest NSE derivatives EOD:
+
+```powershell
+iee ingest-derivatives-eod --trade-date 2026-04-24
+```
+
+The command reads the NSE F&O bhavcopy archive, stores the raw artifact, writes `derivatives_eod/trade_date_*.parquet`,
+and refreshes the DuckDB view. If one NSE archive URL shape fails, it tries the alternate bhavcopy URL before failing.
 
 Ingest NSDL FPI market flows:
 

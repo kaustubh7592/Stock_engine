@@ -10,13 +10,15 @@ import duckdb
 from india_equity_engine.core.schemas.contracts import JobRunResult, NormalizedRecord
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.features.common import add_cross_section_stats, date_or_none
+from india_equity_engine.features.derivatives import compute_derivatives_features
 from india_equity_engine.features.fundamentals import compute_fundamental_features
 from india_equity_engine.features.governance import compute_governance_features
+from india_equity_engine.features.macro import compute_macro_features
 from india_equity_engine.features.technical import compute_technical_features
 from india_equity_engine.storage.duckdb_store import DuckDBStore
 from india_equity_engine.storage.parquet_store import ParquetStore
 
-DEFAULT_FEATURE_FAMILIES = ("technical", "governance", "fundamental")
+DEFAULT_FEATURE_FAMILIES = ("technical", "governance", "fundamental", "macro", "derivatives")
 
 
 def compute_features(
@@ -87,6 +89,28 @@ def compute_features(
         else:
             warnings.append("No shareholding_pattern or financial_facts rows found.")
 
+    if "macro" in requested_families:
+        macro_rows = _query_rows(settings, _macro_series_query(), [resolved_as_of_date])
+        instrument_rows = _query_rows(settings, _instrument_ids_query(), [resolved_as_of_date])
+        instrument_ids = [
+            str(row["instrument_id"]) for row in instrument_rows if row.get("instrument_id")
+        ]
+        records_in += len(macro_rows)
+        if macro_rows and instrument_ids:
+            records.extend(compute_macro_features(macro_rows, instrument_ids, resolved_as_of_date))
+        elif not macro_rows:
+            warnings.append("No macro_series rows found for macro features.")
+        else:
+            warnings.append("No instrument universe found for macro feature replication.")
+
+    if "derivatives" in requested_families:
+        derivatives_rows = _query_rows(settings, _derivatives_eod_query(), [resolved_as_of_date])
+        records_in += len(derivatives_rows)
+        if derivatives_rows:
+            records.extend(compute_derivatives_features(derivatives_rows, resolved_as_of_date))
+        else:
+            warnings.append("No derivatives_eod rows found for derivatives features.")
+
     records = _dedupe_records(add_cross_section_stats(records))
     if not records:
         return JobRunResult(
@@ -141,6 +165,10 @@ def _infer_as_of_date(settings: Settings, families: tuple[str, ...]) -> date | N
     if "fundamental" in families:
         candidates.extend(_max_dates(settings, "shareholding_pattern", "period_end"))
         candidates.extend(_max_dates(settings, "financial_facts", "period_end"))
+    if "macro" in families:
+        candidates.extend(_max_dates(settings, "macro_series", "observation_date"))
+    if "derivatives" in families:
+        candidates.extend(_max_dates(settings, "derivatives_eod", "trade_date"))
     dates = [value for value in candidates if value is not None]
     return max(dates) if dates else None
 
@@ -275,6 +303,56 @@ def _financial_facts_query() -> str:
     """
 
 
+def _macro_series_query() -> str:
+    return """
+        select
+            series_code,
+            series_name,
+            source_family,
+            observation_date,
+            value_num,
+            unit,
+            frequency,
+            vintage_date,
+            seasonal_adjustment,
+            source_url,
+            document_hash,
+            parser_version,
+            available_at
+        from macro_series
+        where observation_date <= ?
+          and value_num is not null
+    """
+
+
+def _instrument_ids_query() -> str:
+    return """
+        select distinct instrument_id
+        from price_daily
+        where trade_date <= ?
+    """
+
+
+def _derivatives_eod_query() -> str:
+    return """
+        select
+            contract_id,
+            instrument_id,
+            trade_date,
+            segment,
+            expiry_date,
+            strike_price,
+            option_type,
+            settlement_price,
+            open_interest,
+            oi_change,
+            contract_volume,
+            available_at
+        from derivatives_eod
+        where trade_date <= ?
+    """
+
+
 def _dedupe_records(records: list[NormalizedRecord]) -> list[NormalizedRecord]:
     deduped = {}
     for record in records:
@@ -287,4 +365,3 @@ def _dedupe_records(records: list[NormalizedRecord]) -> list[NormalizedRecord]:
         )
         deduped[key] = record
     return list(deduped.values())
-

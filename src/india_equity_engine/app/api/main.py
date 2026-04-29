@@ -18,6 +18,7 @@ from india_equity_engine.pipelines.build_event_signals import build_event_signal
 from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
 from india_equity_engine.pipelines.compute_features import compute_features
 from india_equity_engine.pipelines.explain_snapshots import explain_snapshots
+from india_equity_engine.pipelines.ingest_derivatives_eod import ingest_derivatives_eod
 from india_equity_engine.pipelines.ingest_news_items import ingest_news_items
 from india_equity_engine.pipelines.rebuild_warehouse import rebuild_duckdb_views
 from india_equity_engine.pipelines.run_data_quality_review import run_data_quality_review
@@ -173,6 +174,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 include_official_pages=include_official_pages,
                 gdelt_max_records=gdelt_max_records,
             )
+        elif job_name == "ingest-derivatives-eod":
+            result = ingest_derivatives_eod(resolved, trade_date=parsed_date)
         elif job_name == "build-event-signals":
             result = build_event_signals(resolved, limit=limit)
         elif job_name == "compute-features":

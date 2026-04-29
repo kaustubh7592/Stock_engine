@@ -21,6 +21,7 @@ from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snap
 from india_equity_engine.pipelines.compute_features import compute_features
 from india_equity_engine.pipelines.download_filings import download_filings
 from india_equity_engine.pipelines.explain_snapshots import explain_snapshots
+from india_equity_engine.pipelines.ingest_derivatives_eod import ingest_derivatives_eod
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
 from india_equity_engine.pipelines.ingest_insider_trades import ingest_insider_trades
@@ -116,6 +117,23 @@ def ingest_market_eod_command(
     settings = Settings.load(config_dir)
     parsed_trade_date = _parse_trade_date_option(trade_date)
     _run_and_echo(settings, lambda: ingest_market_eod(settings, trade_date=parsed_trade_date))
+
+
+@app.command("ingest-derivatives-eod")
+def ingest_derivatives_eod_command(
+    trade_date: Annotated[
+        str | None,
+        typer.Option(
+            help="Trading date to ingest. Defaults to previous weekday.",
+        ),
+    ] = None,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the NSE derivatives EOD ingestion pipeline."""
+
+    settings = Settings.load(config_dir)
+    parsed_trade_date = _parse_trade_date_option(trade_date)
+    _run_and_echo(settings, lambda: ingest_derivatives_eod(settings, trade_date=parsed_trade_date))
 
 
 @app.command("ingest-disclosures")
@@ -351,9 +369,9 @@ def compute_features_command(
     families: Annotated[
         str,
         typer.Option(
-            help="Comma-separated families: technical,governance,fundamental.",
+            help="Comma-separated families: technical,governance,fundamental,macro,derivatives.",
         ),
-    ] = "technical,governance,fundamental",
+    ] = "technical,governance,fundamental,macro,derivatives",
     config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
 ) -> None:
     """Compute Stage A deterministic feature snapshots."""
@@ -588,6 +606,11 @@ def run_daily_command(
                     settings,
                     "ingest_market_eod",
                     lambda: ingest_market_eod(settings, trade_date=parsed_as_of_date),
+                ),
+                _run_step(
+                    settings,
+                    "ingest_derivatives_eod",
+                    lambda: ingest_derivatives_eod(settings, trade_date=parsed_as_of_date),
                 ),
                 _run_step(settings, "ingest_disclosures", lambda: ingest_disclosures(settings)),
                 _run_step(settings, "ingest_filings", lambda: ingest_filings(settings)),

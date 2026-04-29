@@ -1,61 +1,47 @@
 from datetime import datetime, timezone
-from decimal import Decimal
 from pathlib import Path
 
 import duckdb
 
 from india_equity_engine.core.schemas.contracts import RawArtifact, RawArtifactRecord
 from india_equity_engine.core.settings import Settings
-from india_equity_engine.pipelines import ingest_macro_series as pipeline
+from india_equity_engine.pipelines import ingest_derivatives_eod as pipeline
 
 
-def test_ingest_macro_series_pipeline_writes_duckdb_view(tmp_path: Path, monkeypatch) -> None:
+def test_ingest_derivatives_eod_pipeline_writes_silver_view(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     db_path = tmp_path / "warehouse" / "test.duckdb"
     db_path.parent.mkdir(parents=True)
     settings = _settings(tmp_path, db_path)
 
     monkeypatch.setattr(
-        pipeline.RBICurrentRatesConnector,
+        pipeline.NSEDerivativesEODConnector,
         "download",
         lambda self, source_object: RawArtifact(
-            source_code="S14",
-            source_family="rbi",
+            source_code="S12",
+            source_family="nse",
             logical_name=source_object.logical_name,
             source_url=str(source_object.url),
-            content=Path("tests/fixtures/rbi_current_rates_sample.html").read_bytes(),
-            extension="html",
+            content=Path("tests/fixtures/nse_derivatives_bhavcopy_sample.csv").read_bytes(),
+            extension="csv",
             retrieved_at=datetime(2026, 4, 28, 12, 30, tzinfo=timezone.utc),
-            content_type="text/html",
-            metadata=source_object.metadata,
-        ),
-    )
-    monkeypatch.setattr(
-        pipeline.MoSPILatestReleasesConnector,
-        "download",
-        lambda self, source_object: RawArtifact(
-            source_code="S16",
-            source_family="mospi",
-            logical_name=source_object.logical_name,
-            source_url=str(source_object.url),
-            content=Path("tests/fixtures/mospi_latest_releases_sample.html").read_bytes(),
-            extension="html",
-            retrieved_at=datetime(2026, 4, 29, 12, 30, tzinfo=timezone.utc),
-            content_type="text/html",
+            content_type="text/csv",
             metadata=source_object.metadata,
         ),
     )
     monkeypatch.setattr(pipeline.RawArtifactStore, "store", _raw_record(tmp_path))
 
-    result = pipeline.ingest_macro_series(settings)
+    result = pipeline.ingest_derivatives_eod(settings, trade_date=datetime(2026, 4, 28).date())
 
     assert result.status == "success"
-    assert result.outputs["tables"] == {"macro_series": 10}
+    assert result.outputs["tables"] == {"derivatives_eod": 3}
     with duckdb.connect(str(db_path), read_only=True) as con:
         rows = con.execute(
-            "select series_name, value_num from macro_series order by series_name"
+            "select segment, option_type, open_interest from derivatives_eod order by segment"
         ).fetchall()
-    assert ("Policy Repo Rate", Decimal("5.2500")) in rows
-    assert ("MoSPI CPI inflation latest release", Decimal("3.3400")) in rows
+    assert ("FUTSTK", None, 600000) in rows
 
 
 def _settings(tmp_path: Path, db_path: Path) -> Settings:
@@ -83,8 +69,8 @@ def _raw_record(tmp_path: Path):
         source_family=artifact.source_family,
         logical_name=artifact.logical_name,
         source_url=artifact.source_url,
-        path=tmp_path / "raw.html",
-        metadata_path=tmp_path / "raw.html.json",
+        path=tmp_path / "raw.csv",
+        metadata_path=tmp_path / "raw.csv.json",
         sha256="abc",
         size_bytes=len(artifact.content),
         retrieved_at=artifact.retrieved_at,

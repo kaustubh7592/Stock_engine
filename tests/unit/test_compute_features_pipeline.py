@@ -19,6 +19,8 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
     assert result.outputs["feature_families"]["technical"] == 8
     assert result.outputs["feature_families"]["governance"] == 7
     assert result.outputs["feature_families"]["fundamental"] == 18
+    assert result.outputs["feature_families"]["macro"] == 2
+    assert result.outputs["feature_families"]["derivatives"] == 5
     assert (tmp_path / "data" / "gold" / "feature_snapshots" / "current.parquet").exists()
     with duckdb.connect(str(db_path), read_only=True) as con:
         rows = con.execute(
@@ -31,6 +33,8 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
                 'return_20d_pct',
                 'promoter_pledged_pct_total_equity_latest',
                 'fundamental_debt_to_assets',
+                'macro_cpi_latest',
+                'derivatives_put_call_oi_ratio_latest',
                 'shareholding_promoter_pct_change_1p'
               )
             order by feature_name
@@ -42,6 +46,8 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
     assert by_name["return_20d_pct"] == ("technical", "return_20d_pct", None, False)
     assert by_name["return_5d_pct"][2] is not None
     assert by_name["return_5d_pct"][3] is True
+    assert by_name["macro_cpi_latest"][2] is not None
+    assert by_name["derivatives_put_call_oi_ratio_latest"][2] is not None
 
 
 def _seed_source_tables(db_path: Path) -> None:
@@ -324,6 +330,125 @@ def _seed_source_tables(db_path: Path) -> None:
                     1000.0,
                     "hash2",
                     "2026-04-15 12:00:00",
+                ),
+            ],
+        )
+        con.execute(
+            """
+            create table macro_series (
+                series_code text,
+                series_name text,
+                source_family text,
+                observation_date date,
+                value_num decimal(18,4),
+                unit text,
+                frequency text,
+                vintage_date date,
+                seasonal_adjustment text,
+                source_url text,
+                document_hash text,
+                parser_version text,
+                available_at timestamp
+            )
+            """
+        )
+        con.executemany(
+            "insert into macro_series values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "repo",
+                    "Policy Repo Rate",
+                    "RBI",
+                    "2026-04-28",
+                    5.25,
+                    "percent",
+                    "daily",
+                    "2026-04-28",
+                    "unknown",
+                    "https://rbi.org.in",
+                    "hash3",
+                    "test",
+                    "2026-04-28 12:00:00",
+                ),
+                (
+                    "cpi",
+                    "MoSPI CPI inflation latest release",
+                    "MOSPI",
+                    "2026-03-31",
+                    3.34,
+                    "percent",
+                    "monthly",
+                    "2026-04-29",
+                    "NSA",
+                    "https://mospi.gov.in",
+                    "hash4",
+                    "test",
+                    "2026-04-29 12:00:00",
+                ),
+            ],
+        )
+        con.execute(
+            """
+            create table derivatives_eod (
+                contract_id text,
+                instrument_id text,
+                trade_date date,
+                segment text,
+                expiry_date date,
+                strike_price decimal(18,4),
+                option_type text,
+                settlement_price decimal(18,4),
+                open_interest bigint,
+                oi_change bigint,
+                contract_volume bigint,
+                available_at timestamp
+            )
+            """
+        )
+        con.executemany(
+            "insert into derivatives_eod values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "FUT",
+                    "INS_1",
+                    "2026-04-28",
+                    "FUTSTK",
+                    "2026-04-30",
+                    0,
+                    None,
+                    1415,
+                    600000,
+                    50000,
+                    1200,
+                    "2026-04-28 17:00:00",
+                ),
+                (
+                    "CE",
+                    "INS_1",
+                    "2026-04-28",
+                    "OPTSTK",
+                    "2026-04-30",
+                    1400,
+                    "CE",
+                    22,
+                    300000,
+                    20000,
+                    600,
+                    "2026-04-28 17:00:00",
+                ),
+                (
+                    "PE",
+                    "INS_1",
+                    "2026-04-28",
+                    "OPTSTK",
+                    "2026-04-30",
+                    1400,
+                    "PE",
+                    16,
+                    450000,
+                    30000,
+                    700,
+                    "2026-04-28 17:00:00",
                 ),
             ],
         )
