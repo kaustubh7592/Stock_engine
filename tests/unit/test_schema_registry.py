@@ -22,6 +22,8 @@ def test_core_tables_exist() -> None:
         "event_signals",
         "feature_snapshots",
         "score_snapshots",
+        "stock_snapshots",
+        "llm_explanations",
     ):
         assert table in CANONICAL_SCHEMAS
 

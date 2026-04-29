@@ -12,8 +12,10 @@ from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_governance_events import build_governance_events
+from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
 from india_equity_engine.pipelines.compute_features import compute_features
 from india_equity_engine.pipelines.download_filings import download_filings
+from india_equity_engine.pipelines.explain_snapshots import explain_snapshots
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
 from india_equity_engine.pipelines.ingest_filings import ingest_filings
 from india_equity_engine.pipelines.ingest_insider_trades import ingest_insider_trades
@@ -379,6 +381,48 @@ def score_snapshots_command(
     settings = Settings.load(config_dir)
     parsed_as_of_date = _parse_trade_date_option(as_of_date)
     result = score_snapshots(settings, as_of_date=parsed_as_of_date)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("build-stock-snapshots")
+def build_stock_snapshots_command(
+    as_of_date: Annotated[
+        str | None,
+        typer.Option(
+            help="Snapshot date in YYYY-MM-DD format. Defaults to latest score snapshot date.",
+        ),
+    ] = None,
+    limit: Annotated[int, typer.Option(help="Maximum instruments to snapshot.")] = 5000,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Build strict stock_snapshot JSON artifacts."""
+
+    settings = Settings.load(config_dir)
+    if limit < 1:
+        raise typer.BadParameter("Limit must be at least 1.")
+    parsed_as_of_date = _parse_trade_date_option(as_of_date)
+    result = build_stock_snapshots(settings, as_of_date=parsed_as_of_date, limit=limit)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("explain-snapshots")
+def explain_snapshots_command(
+    as_of_date: Annotated[
+        str | None,
+        typer.Option(
+            help="Explanation date in YYYY-MM-DD format. Defaults to latest stock snapshot date.",
+        ),
+    ] = None,
+    limit: Annotated[int, typer.Option(help="Maximum snapshots to explain.")] = 100,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Generate validated local explanations from stock_snapshot JSON."""
+
+    settings = Settings.load(config_dir)
+    if limit < 1:
+        raise typer.BadParameter("Limit must be at least 1.")
+    parsed_as_of_date = _parse_trade_date_option(as_of_date)
+    result = explain_snapshots(settings, as_of_date=parsed_as_of_date, limit=limit)
     typer.echo(result.model_dump_json(indent=2))
 
 

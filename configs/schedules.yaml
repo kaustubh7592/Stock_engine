@@ -7,6 +7,7 @@ daily_after_close_ist:
   ingest_macro: "19:45"
   compute_features: "20:00"
   score_snapshots: "20:20"
+  build_stock_snapshots: "20:25"
   explain_snapshots: "20:30"
 hourly_events_ist:
   window: "08:00-23:00"

@@ -1,0 +1,2 @@
+"""Stock snapshot builders."""
+

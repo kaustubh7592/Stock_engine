@@ -104,6 +104,13 @@ Run the Step 9 deterministic scoring engine:
 iee score-snapshots
 ```
 
+Run the Step 10 stock snapshot and explanation layer:
+
+```powershell
+iee build-stock-snapshots
+iee explain-snapshots --limit 100
+```
+
 Download structured filing artifacts for later XBRL parsing:
 
 ```powershell
@@ -161,6 +168,8 @@ The refresh currently builds:
 - `event_signals`
 - `feature_snapshots`
 - `score_snapshots`
+- `stock_snapshots`
+- `llm_explanations`
 
 `price_daily` uses NSE's current CM UDiFF bhavcopy as the primary price source and enriches matched rows with
 NSE security-wise delivery quantity and delivery percentage when available.
@@ -209,6 +218,13 @@ history or structured facts are missing.
 `score_snapshots` is written to the gold layer by `score-snapshots`. Scores are deterministic: component scores stay
 separate, composite scores use `configs/weights/score_weights.yaml`, and confidence/abstain behavior uses
 `configs/weights/confidence_rules.yaml`.
+
+`stock_snapshots` indexes strict JSON artifacts produced by `build-stock-snapshots`. Each full snapshot is validated
+with the local `StockSnapshot` schema before being stored under `data/gold/stock_snapshots/json/`.
+
+`llm_explanations` is produced by `explain-snapshots` from validated stock snapshot JSON only. The current local
+backend is a schema-validated structured renderer, so it does not calculate indicators, read raw filings, or invent
+decisions. A local model adapter can replace the renderer later without changing the snapshot contract.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 

@@ -379,6 +379,39 @@ CANONICAL_SCHEMAS: dict[str, TableSchema] = {
             ColumnDefinition("classification", "TEXT"),
         ),
     ),
+    "stock_snapshots": TableSchema(
+        name="stock_snapshots",
+        grain="One row per stock per as_of_date.",
+        primary_key=("instrument_id", "as_of_date"),
+        columns=(
+            ColumnDefinition("instrument_id", "TEXT", False),
+            ColumnDefinition("as_of_date", "DATE", False),
+            ColumnDefinition("snapshot_version", "TEXT"),
+            ColumnDefinition("short_horizon_classification", "TEXT"),
+            ColumnDefinition("medium_horizon_classification", "TEXT"),
+            ColumnDefinition("long_horizon_classification", "TEXT"),
+            ColumnDefinition("top_positive_drivers_json", "JSON"),
+            ColumnDefinition("top_negative_drivers_json", "JSON"),
+            ColumnDefinition("risk_flags_json", "JSON"),
+            ColumnDefinition("snapshot_json_path", "TEXT"),
+        ),
+    ),
+    "llm_explanations": TableSchema(
+        name="llm_explanations",
+        grain="One row per explanation generation.",
+        primary_key=("explanation_id",),
+        columns=(
+            ColumnDefinition("explanation_id", "TEXT", False),
+            ColumnDefinition("instrument_id", "TEXT", False),
+            ColumnDefinition("as_of_date", "DATE", False),
+            ColumnDefinition("model_name", "TEXT"),
+            ColumnDefinition("prompt_version", "TEXT"),
+            ColumnDefinition("input_hash", "TEXT"),
+            ColumnDefinition("output_json", "JSON"),
+            ColumnDefinition("rendered_markdown", "TEXT"),
+            ColumnDefinition("safety_flags_json", "JSON"),
+        ),
+    ),
 }
 
 
