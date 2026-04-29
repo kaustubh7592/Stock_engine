@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -251,8 +252,10 @@ def _json_ready(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _json_value(value: object) -> object:
-    if hasattr(value, "isoformat"):
+    if isinstance(value, date | datetime):
         return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
     return value
 
 
