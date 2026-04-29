@@ -111,6 +111,35 @@ iee build-stock-snapshots
 iee explain-snapshots --limit 100
 ```
 
+Run the Step 11 convenience flows:
+
+```powershell
+iee run-daily --skip-live-ingest --snapshot-limit 5000 --explanation-limit 100
+iee run-hourly-events --include-gdelt --skip-snapshots
+```
+
+Windows Task Scheduler can call the thin wrappers in `scripts/run-daily.ps1` and
+`scripts/run-hourly-events.ps1`.
+
+Use `--include-live-ingest` on `run-daily` when the machine can reach NSE/BSE/RBI/NSDL sources. The default
+`--skip-live-ingest` mode rebuilds governance events, features, scores, stock snapshots, and explanations from
+the local warehouse, which is safer for repeat testing on a blocked network.
+
+Run the local API:
+
+```powershell
+uvicorn india_equity_engine.app.api.main:app --reload
+```
+
+Useful local endpoints:
+
+- `GET /health`
+- `GET /snapshots?as_of_date=2026-04-28&limit=50`
+- `GET /snapshots/{instrument_id}`
+- `GET /scores/{instrument_id}?as_of_date=2026-04-28`
+- `POST /jobs/{job_name}/run`, where `job_name` is one of `ingest-news-items`, `build-event-signals`,
+  `compute-features`, `score-snapshots`, `build-stock-snapshots`, or `explain-snapshots`
+
 Download structured filing artifacts for later XBRL parsing:
 
 ```powershell

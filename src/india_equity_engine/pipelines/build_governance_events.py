@@ -43,10 +43,14 @@ def build_governance_events(settings: Settings, limit: int = 10000) -> JobRunRes
 
     records = _dedupe_records(records)
     write_results = ParquetStore(settings.silver_root).write_current_records(records)
+    warnings = []
     duckdb_store = DuckDBStore(settings.duckdb_path)
     for result in write_results:
         table_path = settings.silver_root / result.table_name / "current.parquet"
-        duckdb_store.refresh_parquet_view(result.table_name, table_path)
+        try:
+            duckdb_store.refresh_parquet_view(result.table_name, table_path)
+        except duckdb.Error as exc:
+            warnings.append(f"DuckDB view refresh failed for {result.table_name}: {exc}")
 
     counts = Counter(record.table_name for record in records)
     event_counts = Counter(record.row.get("event_type") for record in records)
@@ -55,6 +59,7 @@ def build_governance_events(settings: Settings, limit: int = 10000) -> JobRunRes
         status="success",
         records_in=len(rows),
         records_out=len(records),
+        warnings=warnings,
         outputs={
             "tables": dict(counts),
             "event_types": dict(event_counts),

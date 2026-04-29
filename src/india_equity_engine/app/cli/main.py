@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import date, datetime
 from typing import Annotated
 
 import typer
 
 from india_equity_engine.core.logging import configure_logging
+from india_equity_engine.core.schemas.contracts import JobRunResult
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_governance_events import build_governance_events
@@ -426,6 +428,193 @@ def explain_snapshots_command(
     typer.echo(result.model_dump_json(indent=2))
 
 
+@app.command("run-daily")
+def run_daily_command(
+    include_live_ingest: Annotated[
+        bool,
+        typer.Option(
+            "--include-live-ingest/--skip-live-ingest",
+            help="Run network-dependent source ingestion before local rebuilds.",
+        ),
+    ] = False,
+    include_filing_processing: Annotated[
+        bool,
+        typer.Option(
+            "--include-filing-processing/--skip-filing-processing",
+            help="Download and parse filing artifacts before governance/features.",
+        ),
+    ] = False,
+    as_of_date: Annotated[
+        str | None,
+        typer.Option(help="Date in YYYY-MM-DD format for EOD/features/scoring/snapshots."),
+    ] = None,
+    snapshot_limit: Annotated[
+        int,
+        typer.Option(help="Maximum instruments to build as stock snapshots."),
+    ] = 5000,
+    explanation_limit: Annotated[
+        int,
+        typer.Option(help="Maximum stock snapshots to explain."),
+    ] = 100,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the local daily Stage A flow as one convenience command."""
+
+    if snapshot_limit < 1:
+        raise typer.BadParameter("snapshot-limit must be at least 1.")
+    if explanation_limit < 1:
+        raise typer.BadParameter("explanation-limit must be at least 1.")
+    settings = Settings.load(config_dir)
+    parsed_as_of_date = _parse_trade_date_option(as_of_date)
+    results: list[JobRunResult] = []
+
+    if include_live_ingest:
+        results.extend(
+            [
+                _run_step("refresh_universe", lambda: refresh_universe(settings)),
+                _run_step(
+                    "ingest_market_eod",
+                    lambda: ingest_market_eod(settings, trade_date=parsed_as_of_date),
+                ),
+                _run_step("ingest_disclosures", lambda: ingest_disclosures(settings)),
+                _run_step("ingest_filings", lambda: ingest_filings(settings)),
+                _run_step("ingest_insider_trades", lambda: ingest_insider_trades(settings)),
+                _run_step("ingest_macro_series", lambda: ingest_macro_series(settings)),
+                _run_step("ingest_market_flows", lambda: ingest_market_flows(settings)),
+            ]
+        )
+
+    if include_filing_processing:
+        results.extend(
+            [
+                _run_step("download_filings", lambda: download_filings(settings)),
+                _run_step("parse_financial_facts", lambda: parse_financial_facts(settings)),
+                _run_step(
+                    "parse_shareholding_pattern",
+                    lambda: parse_shareholding_pattern(settings),
+                ),
+                _run_step(
+                    "parse_pledge_disclosures",
+                    lambda: parse_pledge_disclosures(settings),
+                ),
+            ]
+        )
+
+    results.extend(
+        [
+            _run_step("build_governance_events", lambda: build_governance_events(settings)),
+            _run_step(
+                "compute_features",
+                lambda: compute_features(settings, as_of_date=parsed_as_of_date),
+            ),
+            _run_step(
+                "score_snapshots",
+                lambda: score_snapshots(settings, as_of_date=parsed_as_of_date),
+            ),
+            _run_step(
+                "build_stock_snapshots",
+                lambda: build_stock_snapshots(
+                    settings,
+                    as_of_date=parsed_as_of_date,
+                    limit=snapshot_limit,
+                ),
+            ),
+            _run_step(
+                "explain_snapshots",
+                lambda: explain_snapshots(
+                    settings,
+                    as_of_date=parsed_as_of_date,
+                    limit=explanation_limit,
+                ),
+            ),
+        ]
+    )
+    typer.echo(_combined_result("run_daily", results).model_dump_json(indent=2))
+
+
+@app.command("run-hourly-events")
+def run_hourly_events_command(
+    include_gdelt: Annotated[
+        bool,
+        typer.Option("--include-gdelt/--skip-gdelt", help="Include GDELT DOC API context."),
+    ] = True,
+    include_official_pages: Annotated[
+        bool,
+        typer.Option(
+            "--include-official-pages/--skip-official-pages",
+            help="Include Budget and ECI official-page discovery.",
+        ),
+    ] = True,
+    gdelt_max_records: Annotated[
+        int,
+        typer.Option(help="Maximum GDELT article records to request."),
+    ] = 50,
+    event_signal_limit: Annotated[
+        int,
+        typer.Option(help="Maximum news rows to scan into event signals."),
+    ] = 10000,
+    refresh_snapshots: Annotated[
+        bool,
+        typer.Option(
+            "--refresh-snapshots/--skip-snapshots",
+            help="Refresh features, scores, snapshots, and explanations after events.",
+        ),
+    ] = False,
+    snapshot_limit: Annotated[
+        int,
+        typer.Option(help="Maximum instruments to build when refreshing snapshots."),
+    ] = 5000,
+    explanation_limit: Annotated[
+        int,
+        typer.Option(help="Maximum explanations to build when refreshing snapshots."),
+    ] = 100,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run the hourly event/news refresh flow."""
+
+    if gdelt_max_records < 1:
+        raise typer.BadParameter("gdelt-max-records must be at least 1.")
+    if event_signal_limit < 1:
+        raise typer.BadParameter("event-signal-limit must be at least 1.")
+    if snapshot_limit < 1:
+        raise typer.BadParameter("snapshot-limit must be at least 1.")
+    if explanation_limit < 1:
+        raise typer.BadParameter("explanation-limit must be at least 1.")
+    settings = Settings.load(config_dir)
+    results = [
+        _run_step(
+            "ingest_news_items",
+            lambda: ingest_news_items(
+                settings,
+                include_gdelt=include_gdelt,
+                include_official_pages=include_official_pages,
+                gdelt_max_records=gdelt_max_records,
+            ),
+        ),
+        _run_step(
+            "build_event_signals",
+            lambda: build_event_signals(settings, limit=event_signal_limit),
+        ),
+    ]
+
+    if refresh_snapshots:
+        results.extend(
+            [
+                _run_step("compute_features", lambda: compute_features(settings)),
+                _run_step("score_snapshots", lambda: score_snapshots(settings)),
+                _run_step(
+                    "build_stock_snapshots",
+                    lambda: build_stock_snapshots(settings, limit=snapshot_limit),
+                ),
+                _run_step(
+                    "explain_snapshots",
+                    lambda: explain_snapshots(settings, limit=explanation_limit),
+                ),
+            ]
+        )
+    typer.echo(_combined_result("run_hourly_events", results).model_dump_json(indent=2))
+
+
 def _parse_trade_date_option(value: str | None) -> date | None:
     if value is None:
         return None
@@ -433,3 +622,33 @@ def _parse_trade_date_option(value: str | None) -> date | None:
         return datetime.strptime(value, "%Y-%m-%d").date()
     except ValueError as exc:
         raise typer.BadParameter("Use YYYY-MM-DD format, for example 2026-04-24.") from exc
+
+
+def _run_step(job_name: str, func: Callable[[], JobRunResult]) -> JobRunResult:
+    try:
+        return func()
+    except Exception as exc:  # noqa: BLE001 - orchestration should report all step failures.
+        return JobRunResult(job_name=job_name, status="failed", warnings=[str(exc)])
+
+
+def _combined_result(job_name: str, results: list[JobRunResult]) -> JobRunResult:
+    status_counts = {result.status for result in results}
+    if status_counts == {"success"}:
+        status = "success"
+    elif "success" in status_counts:
+        status = "partial_success"
+    else:
+        status = "failed"
+    warnings = [
+        f"{result.job_name}: {warning}"
+        for result in results
+        for warning in result.warnings
+    ]
+    return JobRunResult(
+        job_name=job_name,
+        status=status,
+        records_in=sum(result.records_in for result in results),
+        records_out=sum(result.records_out for result in results),
+        warnings=warnings,
+        outputs={"steps": [result.model_dump(mode="json") for result in results]},
+    )

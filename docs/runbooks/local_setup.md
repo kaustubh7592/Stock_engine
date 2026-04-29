@@ -154,6 +154,101 @@ The command reads NSDL's daily FPI/FII investment trends page, stores the raw HT
 `market_flows/current.parquet`, and refreshes the DuckDB view. It separates equity, debt, hybrid, and route slices
 by encoding the investment route in `flow_type`.
 
+Ingest event/news items and build event signals:
+
+```powershell
+iee ingest-news-items
+iee build-event-signals --limit 10000
+```
+
+For a low-network test, skip GDELT and official HTML pages while keeping RBI/PIB RSS:
+
+```powershell
+iee ingest-news-items --skip-gdelt --skip-official-pages
+```
+
+Build features, deterministic scores, stock snapshots, and explanations:
+
+```powershell
+iee compute-features
+iee score-snapshots
+iee build-stock-snapshots --limit 5000
+iee explain-snapshots --limit 100
+```
+
+The feature step writes `feature_snapshots/current.parquet`; scoring writes
+`score_snapshots/current.parquet`; stock snapshot building writes strict JSON artifacts under
+`data/gold/stock_snapshots/json/`; explanations write schema-validated local explanation outputs under
+`data/gold/llm_outputs/`.
+
+## Convenience operating flows
+
+Run the local after-close rebuild from existing warehouse data:
+
+```powershell
+iee run-daily --skip-live-ingest --snapshot-limit 5000 --explanation-limit 100
+```
+
+Run the full daily flow only from a machine/network that can reach the official source hosts:
+
+```powershell
+iee run-daily --include-live-ingest --snapshot-limit 5000 --explanation-limit 100
+```
+
+Add filing artifact download and XBRL/shareholding/pledge parsing when you want the filing-processing slice in the
+same daily command:
+
+```powershell
+iee run-daily --include-live-ingest --include-filing-processing
+```
+
+Refresh event/news data during the day:
+
+```powershell
+iee run-hourly-events --include-gdelt --skip-snapshots
+```
+
+If you want hourly event updates to flow immediately into refreshed features, scores, snapshots, and explanations:
+
+```powershell
+iee run-hourly-events --include-gdelt --refresh-snapshots --snapshot-limit 5000 --explanation-limit 100
+```
+
+Each convenience command prints a single JSON job result with nested step results. A failed network source is
+reported in that JSON instead of hiding which step failed.
+
+For Windows Task Scheduler, call the thin wrappers:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-daily.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-hourly-events.ps1 -SkipGdelt
+```
+
+## Local API
+
+Start the local API:
+
+```powershell
+uvicorn india_equity_engine.app.api.main:app --reload
+```
+
+Then query:
+
+```powershell
+curl.exe http://127.0.0.1:8000/health
+curl.exe "http://127.0.0.1:8000/snapshots?limit=10"
+curl.exe "http://127.0.0.1:8000/snapshots/INS_1"
+curl.exe "http://127.0.0.1:8000/scores/INS_1"
+```
+
+The API reads current Parquet outputs first and falls back to DuckDB views when needed. It can also trigger a small
+set of local jobs synchronously, for example:
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/jobs/build-stock-snapshots/run?limit=25"
+curl.exe -X POST "http://127.0.0.1:8000/jobs/explain-snapshots/run?limit=5"
+```
+
 ## HTTP proxy troubleshooting
 
 If a direct NSE archive XML URL opens in the browser but the CLI reports connection refused, inspect proxy
