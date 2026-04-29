@@ -20,6 +20,8 @@ This note tracks the current implementation against the Stage A design document,
 - Runbooks: setup, source troubleshooting, daily/hourly flows, and API usage are documented.
 - Observability: orchestrated jobs are logged into `job_runs`, warnings are emitted into `data_quality_issues`, and
   `run-data-quality-review` checks duplicate keys, missing fields, missing current tables, and stale table dates.
+- Maintenance: `rebuild-duckdb`, `backup-local-data`, and `run-weekly-maintenance` cover the design's local
+  rebuild, backup, and weekend operating flow without requiring AWS or another cloud dependency.
 
 ## Intentional Current Limits
 
@@ -42,4 +44,5 @@ The current Step 11 implementation matches the document's local operations model
 - Windows Task Scheduler can call those commands directly.
 - The local API can query snapshots and trigger bounded jobs without requiring a cloud service.
 - Weekly data-quality review can be driven by `iee run-data-quality-review`.
+- Weekly rebuild/backup maintenance can be driven by `iee run-weekly-maintenance`.
 - Data and generated artifacts remain outside Git, which keeps the repository small and reproducible.

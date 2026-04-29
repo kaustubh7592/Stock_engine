@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import date, datetime
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -13,6 +14,7 @@ from india_equity_engine.core.logging import configure_logging
 from india_equity_engine.core.schemas.contracts import JobRunResult
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.observability.job_log import record_job_run, utc_now
+from india_equity_engine.pipelines.backup_local_data import backup_local_data
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_governance_events import build_governance_events
 from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
@@ -29,8 +31,10 @@ from india_equity_engine.pipelines.ingest_news_items import ingest_news_items
 from india_equity_engine.pipelines.parse_financial_facts import parse_financial_facts
 from india_equity_engine.pipelines.parse_pledge_disclosures import parse_pledge_disclosures
 from india_equity_engine.pipelines.parse_shareholding_pattern import parse_shareholding_pattern
+from india_equity_engine.pipelines.rebuild_warehouse import rebuild_duckdb_views
 from india_equity_engine.pipelines.refresh_universe import refresh_universe
 from india_equity_engine.pipelines.run_data_quality_review import run_data_quality_review
+from india_equity_engine.pipelines.run_weekly_maintenance import run_weekly_maintenance
 from india_equity_engine.pipelines.score_snapshots import score_snapshots
 from india_equity_engine.storage.registry import SourceRegistry
 
@@ -446,6 +450,93 @@ def run_data_quality_review_command(
         raise typer.BadParameter("max-age-days must be at least 1.")
     settings = Settings.load(config_dir)
     _run_and_echo(settings, lambda: run_data_quality_review(settings, max_age_days=max_age_days))
+
+
+@app.command("rebuild-duckdb")
+def rebuild_duckdb_command(
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Rebuild DuckDB views from local Parquet datasets."""
+
+    settings = Settings.load(config_dir)
+    _run_and_echo(settings, lambda: rebuild_duckdb_views(settings))
+
+
+@app.command("backup-local-data")
+def backup_local_data_command(
+    backup_dir: Annotated[
+        str | None,
+        typer.Option(help="Backup output directory. Defaults to data/backups."),
+    ] = None,
+    include_raw: Annotated[
+        bool,
+        typer.Option("--include-raw/--skip-raw", help="Include immutable raw artifacts."),
+    ] = True,
+    include_silver: Annotated[
+        bool,
+        typer.Option("--include-silver/--skip-silver", help="Include normalized silver Parquet."),
+    ] = True,
+    include_gold: Annotated[
+        bool,
+        typer.Option("--include-gold/--skip-gold", help="Include gold snapshots and outputs."),
+    ] = True,
+    include_logs: Annotated[
+        bool,
+        typer.Option("--include-logs/--skip-logs", help="Include local job logs."),
+    ] = True,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run/--write-archive", help="Plan the backup without writing a zip."),
+    ] = False,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Create a local zip backup of configs, warehouse, and selected data layers."""
+
+    settings = Settings.load(config_dir)
+    parsed_backup_dir = Path(backup_dir).resolve() if backup_dir else None
+    _run_and_echo(
+        settings,
+        lambda: backup_local_data(
+            settings,
+            backup_dir=parsed_backup_dir,
+            include_raw=include_raw,
+            include_silver=include_silver,
+            include_gold=include_gold,
+            include_logs=include_logs,
+            dry_run=dry_run,
+        ),
+    )
+
+
+@app.command("run-weekly-maintenance")
+def run_weekly_maintenance_command(
+    include_backup: Annotated[
+        bool,
+        typer.Option("--include-backup/--skip-backup", help="Create a local backup archive."),
+    ] = True,
+    backup_dir: Annotated[
+        str | None,
+        typer.Option(help="Backup output directory. Defaults to data/backups."),
+    ] = None,
+    dry_run_backup: Annotated[
+        bool,
+        typer.Option("--dry-run-backup/--write-backup", help="Plan backup without writing a zip."),
+    ] = False,
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Run weekend maintenance: rebuild views, quality review, and optional backup."""
+
+    settings = Settings.load(config_dir)
+    parsed_backup_dir = Path(backup_dir).resolve() if backup_dir else None
+    _run_and_echo(
+        settings,
+        lambda: run_weekly_maintenance(
+            settings,
+            backup_dir=parsed_backup_dir,
+            include_backup=include_backup,
+            dry_run_backup=dry_run_backup,
+        ),
+    )
 
 
 @app.command("run-daily")

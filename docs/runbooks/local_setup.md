@@ -229,12 +229,48 @@ duplicate primary keys, missing required fields, stale dates, and job warnings. 
 dated `price_daily` Parquet files, the review checks the latest available Parquet file when no `current.parquet`
 exists.
 
+## Warehouse rebuilds and backups
+
+Rebuild DuckDB views from local Parquet files:
+
+```powershell
+iee rebuild-duckdb
+```
+
+The rebuild scans `data/silver/` and `data/gold/`. If a table has `current.parquet`, that file is used. If the
+table is append-style, such as dated `price_daily` Parquet files, the command builds the view over all Parquet files
+in that table directory. If OneDrive has locked the primary DuckDB `.wal` file, the command writes a shadow
+`*.rebuilt.duckdb` warehouse next to the primary database. If that directory is also locked, it falls back to a temp
+directory warehouse. The chosen path is reported in `outputs.output_duckdb_path`.
+
+Create a local backup archive:
+
+```powershell
+iee backup-local-data --dry-run
+iee backup-local-data --write-archive
+```
+
+The backup zip includes `configs/`, available DuckDB files under the warehouse directory, and selected data layers.
+By default it includes raw, silver, gold, and local job logs. Backups default to `data/backups/`; use
+`--backup-dir` to write to an external drive.
+
+Run the weekly maintenance flow:
+
+```powershell
+iee run-weekly-maintenance --dry-run-backup
+```
+
+This runs DuckDB view rebuild, data-quality review, and optional local backup as one weekend command.
+
 For Windows Task Scheduler, call the thin wrappers:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run-daily.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-hourly-events.ps1 -SkipGdelt
 powershell -ExecutionPolicy Bypass -File scripts/run-data-quality-review.ps1
+powershell -ExecutionPolicy Bypass -File scripts/rebuild-duckdb.ps1
+powershell -ExecutionPolicy Bypass -File scripts/backup-local-data.ps1 -DryRun
+powershell -ExecutionPolicy Bypass -File scripts/run-weekly-maintenance.ps1 -DryRunBackup
 ```
 
 ## Local API
@@ -263,6 +299,9 @@ set of local jobs synchronously, for example:
 curl.exe -X POST "http://127.0.0.1:8000/jobs/build-stock-snapshots/run?limit=25"
 curl.exe -X POST "http://127.0.0.1:8000/jobs/explain-snapshots/run?limit=5"
 curl.exe -X POST "http://127.0.0.1:8000/jobs/run-data-quality-review/run"
+curl.exe -X POST "http://127.0.0.1:8000/jobs/rebuild-duckdb/run"
+curl.exe -X POST "http://127.0.0.1:8000/jobs/backup-local-data/run?dry_run=true"
+curl.exe -X POST "http://127.0.0.1:8000/jobs/run-weekly-maintenance/run?dry_run=true"
 ```
 
 ## HTTP proxy troubleshooting

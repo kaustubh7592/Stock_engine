@@ -124,8 +124,17 @@ Run the Step 12 data-quality and observability review:
 iee run-data-quality-review
 ```
 
+Run the Step 13 local maintenance and backup flow:
+
+```powershell
+iee rebuild-duckdb
+iee backup-local-data --dry-run
+iee run-weekly-maintenance --dry-run-backup
+```
+
 Windows Task Scheduler can call the thin wrappers in `scripts/run-daily.ps1` and
-`scripts/run-hourly-events.ps1`.
+`scripts/run-hourly-events.ps1`. Weekly maintenance wrappers are available in `scripts/rebuild-duckdb.ps1`,
+`scripts/backup-local-data.ps1`, and `scripts/run-weekly-maintenance.ps1`.
 
 Use `--include-live-ingest` on `run-daily` when the machine can reach NSE/BSE/RBI/NSDL sources. The default
 `--skip-live-ingest` mode rebuilds governance events, features, scores, stock snapshots, and explanations from
@@ -147,7 +156,7 @@ Useful local endpoints:
 - `GET /quality-issues`
 - `POST /jobs/{job_name}/run`, where `job_name` is one of `ingest-news-items`, `build-event-signals`,
   `compute-features`, `score-snapshots`, `build-stock-snapshots`, `explain-snapshots`, or
-  `run-data-quality-review`
+  `run-data-quality-review`, `rebuild-duckdb`, `backup-local-data`, or `run-weekly-maintenance`
 
 Download structured filing artifacts for later XBRL parsing:
 

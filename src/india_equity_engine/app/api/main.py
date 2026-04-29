@@ -12,12 +12,15 @@ from fastapi import FastAPI, HTTPException, Query
 from india_equity_engine import __version__
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.observability.job_log import record_job_run, utc_now
+from india_equity_engine.pipelines.backup_local_data import backup_local_data
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
 from india_equity_engine.pipelines.compute_features import compute_features
 from india_equity_engine.pipelines.explain_snapshots import explain_snapshots
 from india_equity_engine.pipelines.ingest_news_items import ingest_news_items
+from india_equity_engine.pipelines.rebuild_warehouse import rebuild_duckdb_views
 from india_equity_engine.pipelines.run_data_quality_review import run_data_quality_review
+from india_equity_engine.pipelines.run_weekly_maintenance import run_weekly_maintenance
 from india_equity_engine.pipelines.score_snapshots import score_snapshots
 
 
@@ -155,6 +158,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         limit: int = Query(default=100, ge=1, le=10000),
         include_gdelt: bool = Query(default=True),
         include_official_pages: bool = Query(default=True),
+        include_backup: bool = Query(default=True),
+        dry_run: bool = Query(default=True),
         gdelt_max_records: int = Query(default=50, ge=1, le=250),
     ) -> dict[str, Any]:
         resolved = active_settings()
@@ -179,6 +184,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             result = explain_snapshots(resolved, as_of_date=parsed_date, limit=limit)
         elif job_name == "run-data-quality-review":
             result = run_data_quality_review(resolved)
+        elif job_name == "rebuild-duckdb":
+            result = rebuild_duckdb_views(resolved)
+        elif job_name == "backup-local-data":
+            result = backup_local_data(resolved, dry_run=dry_run)
+        elif job_name == "run-weekly-maintenance":
+            result = run_weekly_maintenance(
+                resolved,
+                include_backup=include_backup,
+                dry_run_backup=dry_run,
+            )
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported job: {job_name}")
         logged = record_job_run(resolved, result, started_at=started_at, finished_at=utc_now())

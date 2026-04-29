@@ -18,5 +18,6 @@ weekly:
   day: Saturday
   jobs:
     - backfill_history
-    - compact_warehouse
+    - rebuild_duckdb
     - data_quality_review
+    - backup_local_data
