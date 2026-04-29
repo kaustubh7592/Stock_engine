@@ -17,6 +17,7 @@ from india_equity_engine.pipelines.backup_local_data import backup_local_data
 from india_equity_engine.pipelines.build_event_signals import build_event_signals
 from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
 from india_equity_engine.pipelines.compute_features import compute_features
+from india_equity_engine.pipelines.engine_status import engine_status
 from india_equity_engine.pipelines.explain_snapshots import explain_snapshots
 from india_equity_engine.pipelines.ingest_derivatives_eod import ingest_derivatives_eod
 from india_equity_engine.pipelines.ingest_news_items import ingest_news_items
@@ -37,6 +38,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
+
+    @app.get("/engine-status")
+    def get_engine_status() -> dict[str, Any]:
+        return engine_status(active_settings())
 
     @app.get("/snapshots")
     def list_snapshots(

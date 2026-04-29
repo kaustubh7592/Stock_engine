@@ -62,6 +62,10 @@ def test_api_reads_snapshot_and_scores_from_parquet(tmp_path: Path) -> None:
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
 
+    status_response = client.get("/engine-status")
+    assert status_response.status_code == 200
+    assert status_response.json()["tables"]["score_snapshots"]["rows"] == 1
+
     list_response = client.get("/snapshots", params={"as_of_date": "2026-04-28"})
     assert list_response.status_code == 200
     assert list_response.json()["rows"][0]["instrument_id"] == "INS_1"

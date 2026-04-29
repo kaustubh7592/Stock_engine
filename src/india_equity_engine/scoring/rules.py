@@ -10,7 +10,15 @@ from typing import Any
 
 from india_equity_engine.features.common import decimal_or_none
 
-COMPONENTS = ("technical", "fundamental", "governance", "macro", "event", "derivatives")
+COMPONENTS = (
+    "technical",
+    "fundamental",
+    "governance",
+    "macro",
+    "event",
+    "derivatives",
+    "peer",
+)
 
 
 @dataclass(frozen=True)
@@ -61,6 +69,11 @@ def component_scores_for_instrument(
             "derivatives",
             grouped.get("derivatives", []),
             _derivatives_feature_score,
+        ),
+        "peer": _score_feature_group(
+            "peer",
+            grouped.get("peer", []),
+            _peer_feature_score,
         ),
     }
     return scores
@@ -259,6 +272,21 @@ def _event_score(
     if feature_score.score is not None:
         return feature_score
     return _event_component_score(event_signal_rows)
+
+
+def _peer_feature_score(row: dict[str, Any]) -> Decimal | None:
+    name = str(row.get("feature_name") or "")
+    value = decimal_or_none(row.get("value_num"))
+    if value is None:
+        return None
+    if name in {
+        "peer_return_5d_rank_pct",
+        "peer_return_20d_rank_pct",
+        "peer_liquidity_rank_pct",
+        "peer_delivery_pct_rank_pct",
+    }:
+        return _clamp_score(value)
+    return None
 
 
 def _event_component_score(rows: list[dict[str, Any]]) -> ComponentScore:

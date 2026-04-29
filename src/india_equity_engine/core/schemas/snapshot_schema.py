@@ -41,9 +41,14 @@ class HorizonScore(BaseModel):
     macro: float | None = Field(default=None, ge=0, le=1)
     events: float | None = Field(default=None, ge=0, le=1)
     derivatives: float | None = Field(default=None, ge=0, le=1)
+    peer: float | None = Field(default=None, ge=0, le=1)
     composite: float = Field(ge=0, le=1)
     confidence: float = Field(ge=0, le=1)
     classification: Classification
+    conflict_count: int = Field(default=0, ge=0)
+    abstain_reasons: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    missing_components: list[str] = Field(default_factory=list)
 
 
 class DecisionSnapshot(BaseModel):
@@ -53,6 +58,8 @@ class DecisionSnapshot(BaseModel):
     key_risks: list[str] = Field(default_factory=list)
     top_positive_drivers: list[str] = Field(default_factory=list)
     top_negative_drivers: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
 
 
 class StockSnapshot(BaseModel):

@@ -148,3 +148,14 @@ The macro/flow, event/news, and feature-family layers now connect more fully.
 - `event_signals` contributes 30-day event carryover features by direct instrument link or sector mapping.
 - `price_daily` plus instrument sector metadata contributes peer-relative rank features where enough valid sector
   peers exist; otherwise peer features carry `coverage_flag=false` instead of fake ranks.
+
+## Stage A Step 19, Step 20, and Step 21
+
+The final Stage A decision and operating surface now carries explicit deterministic evidence.
+
+- `score-snapshots` writes component scores including peer-relative score, conflict details, abstain reasons, missing
+  components, and driver/risk JSON alongside composite score and confidence.
+- `build-stock-snapshots` carries those deterministic conflict and missing-evidence fields into strict snapshot JSON.
+- `explain-snapshots` explains only validated snapshot fields; it does not compute indicators or invent decisions.
+- `engine-status` and `/engine-status` provide a quick local health view of table counts, latest dates, score
+  classifications, and generated snapshot paths.

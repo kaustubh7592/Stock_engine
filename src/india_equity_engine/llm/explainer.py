@@ -101,7 +101,16 @@ def _missing_evidence(snapshot: StockSnapshot) -> list[str]:
             notes.append(f"{family} missing coverage: {', '.join(missing[:5])}")
     for horizon, score in snapshot.scores.items():
         if score.classification == "abstain":
-            notes.append(f"{horizon} score abstains at confidence {score.confidence:.2f}")
+            reason = "; ".join(score.abstain_reasons[:3]) or "confidence or conflict threshold"
+            notes.append(
+                f"{horizon} score abstains at confidence {score.confidence:.2f}: {reason}"
+            )
+        for conflict in score.conflicts[:3]:
+            notes.append(f"{horizon} conflict: {conflict}")
+        for component in score.missing_components[:3]:
+            notes.append(f"{horizon} missing component: {component}")
+    notes.extend(snapshot.decision.conflicts[:4])
+    notes.extend(snapshot.decision.missing_evidence[:4])
     return notes[:8]
 
 
@@ -109,4 +118,3 @@ def _bullets(items: list[str]) -> list[str]:
     if not items:
         return ["- No major item surfaced in the structured snapshot."]
     return [f"- {item}" for item in items]
-

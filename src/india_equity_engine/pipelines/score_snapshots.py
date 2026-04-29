@@ -98,16 +98,7 @@ def _load_feature_rows(settings: Settings, as_of_date: date) -> list[dict[str, A
     return _query_rows(
         settings,
         f"""
-        select
-            instrument_id,
-            as_of_date,
-            horizon,
-            feature_family,
-            feature_name,
-            value_num,
-            zscore,
-            rank_pct,
-            coverage_flag
+        select *
         from {_feature_source(settings)}
         where as_of_date = ?
         """,
@@ -122,18 +113,7 @@ def _load_event_signal_rows(settings: Settings, as_of_date: date) -> list[dict[s
     return _query_rows(
         settings,
         f"""
-        select
-            event_signal_id,
-            news_id,
-            instrument_id,
-            sector_name,
-            event_date,
-            horizon,
-            impact_direction,
-            impact_score,
-            confidence,
-            exposure_channel,
-            rationale_code
+        select *
         from {source}
         where event_date <= ?
         """,

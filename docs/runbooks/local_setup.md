@@ -191,11 +191,20 @@ The feature step writes `feature_snapshots/current.parquet`; scoring writes
 `data/gold/stock_snapshots/json/`; explanations write schema-validated local explanation outputs under
 `data/gold/llm_outputs/`.
 
+Score rows include component scores, peer score, conflict details, abstain reasons, missing components, and
+positive/negative/risk driver JSON. Stock snapshots and explanations consume those deterministic fields directly.
+
 By default `compute-features` now builds technical, governance, fundamental, macro/FPI-flow, derivatives,
 event/news carryover, and peer-relative feature families. To isolate one layer while testing:
 
 ```powershell
 iee compute-features --families event,peer
+```
+
+Check local output health without running network jobs:
+
+```powershell
+iee engine-status
 ```
 
 ## Convenience operating flows

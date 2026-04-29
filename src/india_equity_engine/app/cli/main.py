@@ -20,6 +20,7 @@ from india_equity_engine.pipelines.build_governance_events import build_governan
 from india_equity_engine.pipelines.build_stock_snapshots import build_stock_snapshots
 from india_equity_engine.pipelines.compute_features import compute_features
 from india_equity_engine.pipelines.download_filings import download_filings
+from india_equity_engine.pipelines.engine_status import engine_status
 from india_equity_engine.pipelines.explain_snapshots import explain_snapshots
 from india_equity_engine.pipelines.ingest_derivatives_eod import ingest_derivatives_eod
 from india_equity_engine.pipelines.ingest_disclosures import ingest_disclosures
@@ -90,6 +91,16 @@ def sources(
         for source in registry.enabled()
     ]
     typer.echo(json.dumps(rows, indent=2))
+
+
+@app.command("engine-status")
+def engine_status_command(
+    config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
+) -> None:
+    """Summarize local table counts, latest dates, and score outputs."""
+
+    settings = Settings.load(config_dir)
+    typer.echo(json.dumps(engine_status(settings), indent=2))
 
 
 @app.command("refresh-universe")

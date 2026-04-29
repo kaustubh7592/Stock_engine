@@ -5,6 +5,7 @@ short:
   macro: 0.10
   event: 0.20
   derivatives: 0.10
+  peer: 0.05
 medium:
   technical: 0.25
   fundamental: 0.20
@@ -12,6 +13,7 @@ medium:
   macro: 0.15
   event: 0.15
   derivatives: 0.10
+  peer: 0.10
 long:
   technical: 0.10
   fundamental: 0.35
@@ -19,3 +21,4 @@ long:
   macro: 0.15
   event: 0.10
   derivatives: 0.05
+  peer: 0.10

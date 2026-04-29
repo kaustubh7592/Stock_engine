@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import date
 from typing import Any
@@ -118,9 +119,14 @@ def _score_payload(rows: list[dict[str, Any]]) -> dict[str, HorizonScore]:
             macro=_float_or_none(row.get("macro_score")),
             events=_float_or_none(row.get("event_score")),
             derivatives=_float_or_none(row.get("derivatives_score")),
+            peer=_float_or_none(row.get("peer_score")),
             composite=_float_or_default(row.get("composite_score"), 0.5),
             confidence=_float_or_default(row.get("confidence_score"), 0),
             classification=_classification(row.get("classification")),
+            conflict_count=int(row.get("conflict_count") or 0),
+            abstain_reasons=_json_list(row.get("abstain_reasons_json")),
+            conflicts=_json_list(row.get("conflicts_json")),
+            missing_components=_json_list(row.get("missing_components_json")),
         )
     return output
 
@@ -148,6 +154,8 @@ def _decision(
         key_risks=risks[:8],
         top_positive_drivers=positives[:8],
         top_negative_drivers=negatives[:8],
+        conflicts=_score_conflicts(scores)[:8],
+        missing_evidence=_score_missing_evidence(scores)[:8],
     )
 
 
@@ -172,7 +180,13 @@ def _drivers(
         elif score.composite <= 0.40:
             negatives.append(f"{horizon} composite score {score.composite:.2f}")
         if score.classification == "abstain":
-            risks.append(f"{horizon} horizon abstains due to low confidence or conflict")
+            reasons = ", ".join(score.abstain_reasons[:3]) or "low confidence or conflict"
+            risks.append(f"{horizon} horizon abstains due to {reasons}")
+        risks.extend(f"{horizon} conflict: {conflict}" for conflict in score.conflicts[:3])
+        risks.extend(
+            f"{horizon} missing component: {component}"
+            for component in score.missing_components[:4]
+        )
     for family, family_features in features.items():
         for feature_name, payload in family_features.items():
             value = payload.get("value")
@@ -269,6 +283,7 @@ def _freshness(
         "events": "fresh"
         if any(score.events is not None for score in scores.values())
         else "missing",
+        "peer": "fresh" if features.get("peer") else "missing",
     }
 
 
@@ -277,6 +292,37 @@ def _classification(value: object) -> str:
     if text in {"bullish", "neutral", "bearish", "abstain"}:
         return text
     return "abstain"
+
+
+def _score_conflicts(scores: dict[str, HorizonScore]) -> list[str]:
+    output = []
+    for horizon, score in scores.items():
+        output.extend(f"{horizon}: {conflict}" for conflict in score.conflicts)
+    return output
+
+
+def _score_missing_evidence(scores: dict[str, HorizonScore]) -> list[str]:
+    output = []
+    for horizon, score in scores.items():
+        output.extend(
+            f"{horizon}: missing {component}" for component in score.missing_components
+        )
+        output.extend(f"{horizon}: {reason}" for reason in score.abstain_reasons)
+    return output
+
+
+def _json_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    try:
+        payload = json.loads(str(value))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [str(item) for item in payload]
 
 
 def _json_number(value: object) -> float | None:

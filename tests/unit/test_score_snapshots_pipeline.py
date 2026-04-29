@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import duckdb
@@ -21,13 +22,14 @@ def test_score_snapshots_pipeline_writes_scores(tmp_path: Path) -> None:
     with duckdb.connect(str(db_path), read_only=True) as con:
         rows = con.execute(
             """
-            select instrument_id, horizon, classification, confidence_score
+            select instrument_id, horizon, classification, confidence_score, missing_components_json
             from score_snapshots
             order by instrument_id, horizon
             """
         ).fetchall()
     assert len(rows) == 6
     assert any(row[2] in {"bullish", "neutral", "bearish", "abstain"} for row in rows)
+    assert any(json.loads(row[4]) for row in rows)
 
 
 def _seed_feature_table(db_path: Path) -> None:

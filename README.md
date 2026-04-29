@@ -36,6 +36,12 @@ Validate the configuration:
 iee config-check
 ```
 
+Summarize local outputs and table freshness:
+
+```powershell
+iee engine-status
+```
+
 List configured sources:
 
 ```powershell
@@ -276,14 +282,16 @@ features, with explicit `coverage_flag` values instead of fake zeros when histor
 
 `score_snapshots` is written to the gold layer by `score-snapshots`. Scores are deterministic: component scores stay
 separate, composite scores use `configs/weights/score_weights.yaml`, and confidence/abstain behavior uses
-`configs/weights/confidence_rules.yaml`.
+`configs/weights/confidence_rules.yaml`. Score rows also carry peer score, conflicts, abstain reasons, missing
+components, and driver/risk JSON.
 
 `stock_snapshots` indexes strict JSON artifacts produced by `build-stock-snapshots`. Each full snapshot is validated
 with the local `StockSnapshot` schema before being stored under `data/gold/stock_snapshots/json/`.
 
 `llm_explanations` is produced by `explain-snapshots` from validated stock snapshot JSON only. The current local
 backend is a schema-validated structured renderer, so it does not calculate indicators, read raw filings, or invent
-decisions. A local model adapter can replace the renderer later without changing the snapshot contract.
+decisions. It explains the deterministic conflicts, missing coverage, and risks already present in the snapshot.
+A local model adapter can replace the renderer later without changing the snapshot contract.
 
 By default, local data is written under `data/`, which is intentionally ignored by Git.
 

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -36,6 +37,10 @@ class ScoreDecision:
     confidence: Decimal
     conflict_count: int
     abstain: bool
+    conflicts: tuple[str, ...]
+    abstain_reasons: tuple[str, ...]
+    missing_components: tuple[str, ...]
+    stale_components: tuple[str, ...]
 
 
 def build_score_records(
@@ -61,6 +66,7 @@ def build_score_records(
             composite = _composite_score(component_scores, weights)
             decision = _decision_for(
                 component_scores,
+                by_instrument.get(instrument_id, []),
                 weights,
                 composite,
                 horizon,
@@ -137,9 +143,19 @@ def _score_record(
             "macro_score": _score_or_none(component_scores["macro"].score),
             "event_score": _score_or_none(component_scores["event"].score),
             "derivatives_score": _score_or_none(component_scores["derivatives"].score),
+            "peer_score": _score_or_none(component_scores["peer"].score),
             "composite_score": _quantize(composite),
             "confidence_score": _quantize(decision.confidence),
             "classification": decision.classification,
+            "conflict_count": decision.conflict_count,
+            "conflicts_json": _json_list(decision.conflicts),
+            "abstain_reasons_json": _json_list(decision.abstain_reasons),
+            "missing_components_json": _json_list(decision.missing_components),
+            "positive_drivers_json": _json_list(_drivers(component_scores, "positive")),
+            "negative_drivers_json": _json_list(_drivers(component_scores, "negative")),
+            "risk_flags_json": _json_list(
+                tuple(decision.stale_components) + _drivers(component_scores, "risk")
+            ),
             "source": "deterministic_scoring_engine",
             "source_url": None,
             "retrieved_at": now,
@@ -179,29 +195,49 @@ def _composite_score(
 
 def _decision_for(
     component_scores: dict[str, ComponentScore],
+    feature_rows: list[dict[str, Any]],
     weights: dict[str, Decimal],
     composite: Decimal,
     horizon: str,
     rules: ConfidenceRules,
 ) -> ScoreDecision:
-    missing_weight = sum(
-        weight for component, weight in weights.items() if component_scores[component].score is None
+    missing_components = tuple(
+        component
+        for component, weight in weights.items()
+        if weight > 0 and component_scores[component].score is None
     )
+    missing_weight = sum(weights[component] for component in missing_components)
     coverage_weight = sum(
         weights[component] * component_scores[component].coverage
         for component in COMPONENTS
         if component_scores[component].score is not None
     )
-    conflict_count = _conflict_count(component_scores)
+    conflicts = _conflicts(component_scores)
+    stale_components = _stale_components(feature_rows, as_of_date=None)
+    stale_penalty = _stale_penalty(stale_components, weights, rules)
+    conflict_count = len(conflicts)
     confidence = (
         Decimal("0.35")
         + Decimal("0.55") * coverage_weight
         - rules.missing_component_penalty * missing_weight
         - rules.severe_conflict_penalty * Decimal(conflict_count)
+        - stale_penalty
     )
     confidence = _clamp(confidence)
+    abstain_reasons = []
+    if confidence < rules.minimum_confidence[horizon]:
+        abstain_reasons.append(
+            f"confidence_below_{horizon}_minimum:{confidence:.4f}<{rules.minimum_confidence[horizon]:.4f}"
+        )
+    if conflict_count > rules.max_severe_conflicts:
+        abstain_reasons.append(f"severe_conflicts:{conflict_count}")
+    if missing_components:
+        abstain_reasons.append("missing_components:" + ",".join(missing_components))
+    if stale_components:
+        abstain_reasons.append("stale_components:" + ",".join(stale_components))
     abstain = bool(
         rules.abstain_enabled
+        and abstain_reasons
         and (
             confidence < rules.minimum_confidence[horizon]
             or conflict_count > rules.max_severe_conflicts
@@ -220,14 +256,103 @@ def _decision_for(
         confidence=confidence,
         conflict_count=conflict_count,
         abstain=abstain,
+        conflicts=conflicts,
+        abstain_reasons=tuple(abstain_reasons),
+        missing_components=missing_components,
+        stale_components=stale_components,
     )
 
 
-def _conflict_count(component_scores: dict[str, ComponentScore]) -> int:
-    available = [score.score for score in component_scores.values() if score.score is not None]
-    high = any(score >= Decimal("0.65") for score in available)
-    low = any(score <= Decimal("0.35") for score in available)
-    return 1 if high and low else 0
+def _conflicts(component_scores: dict[str, ComponentScore]) -> tuple[str, ...]:
+    high = [
+        (component, score.score)
+        for component, score in component_scores.items()
+        if score.score is not None and score.score >= Decimal("0.65")
+    ]
+    low = [
+        (component, score.score)
+        for component, score in component_scores.items()
+        if score.score is not None and score.score <= Decimal("0.35")
+    ]
+    conflicts = []
+    for high_component, high_score in high:
+        for low_component, low_score in low:
+            if high_component == low_component:
+                continue
+            conflicts.append(
+                f"{high_component}_strong:{high_score:.4f}|{low_component}_weak:{low_score:.4f}"
+            )
+    return tuple(conflicts[:8])
+
+
+def _stale_components(
+    feature_rows: list[dict[str, Any]],
+    *,
+    as_of_date: date | None,
+) -> tuple[str, ...]:
+    grouped: dict[str, list[date]] = {}
+    for row in feature_rows:
+        family = row.get("feature_family")
+        if not family:
+            continue
+        available_date = _date_or_none(row.get("available_at"))
+        row_as_of_date = as_of_date or _date_or_none(row.get("as_of_date"))
+        if available_date is None or row_as_of_date is None:
+            continue
+        grouped.setdefault(str(family), []).append(available_date)
+
+    stale = []
+    thresholds = {
+        "technical": 7,
+        "derivatives": 7,
+        "peer": 7,
+        "event": 14,
+        "macro": 45,
+        "fundamental": 120,
+        "governance": 120,
+    }
+    for family, dates in grouped.items():
+        latest = max(dates)
+        reference = as_of_date or max(
+            _date_or_none(row.get("as_of_date")) or latest
+            for row in feature_rows
+            if row.get("feature_family") == family
+        )
+        if (reference - latest).days > thresholds.get(family, 30):
+            stale.append(family)
+    return tuple(sorted(stale))
+
+
+def _stale_penalty(
+    stale_components: tuple[str, ...],
+    weights: dict[str, Decimal],
+    rules: ConfidenceRules,
+) -> Decimal:
+    penalty = Decimal("0")
+    for component in stale_components:
+        weight = weights.get(component, Decimal("0"))
+        if component in {"technical", "derivatives", "peer", "event"}:
+            penalty += rules.stale_market_data_penalty * weight
+        elif component in {"fundamental", "governance"}:
+            penalty += rules.stale_filing_data_penalty * weight
+        else:
+            penalty += (rules.stale_market_data_penalty / Decimal("2")) * weight
+    return penalty
+
+
+def _drivers(
+    component_scores: dict[str, ComponentScore],
+    kind: str,
+) -> tuple[str, ...]:
+    output = []
+    for component, score in component_scores.items():
+        if kind == "positive":
+            output.extend(f"{component}:{driver}" for driver in score.positive_drivers)
+        elif kind == "negative":
+            output.extend(f"{component}:{driver}" for driver in score.negative_drivers)
+        elif kind == "risk":
+            output.extend(f"{component}:{driver}" for driver in score.risk_flags)
+    return tuple(output[:12])
 
 
 def _group_by_instrument(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -259,3 +384,27 @@ def _decimal(value: object, default: Decimal) -> Decimal:
 
 def _clamp(value: Decimal) -> Decimal:
     return max(Decimal("0"), min(Decimal("1"), value))
+
+
+def _json_list(values: tuple[str, ...]) -> str:
+    return json.dumps(list(values), sort_keys=True)
+
+
+def _date_or_none(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if value is None:
+        return None
+    text = str(value)
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d-%b-%Y"):
+        try:
+            return datetime.strptime(text.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
