@@ -447,22 +447,29 @@ def _instrument_sector_query(settings: Settings) -> str:
 
 
 def _derivatives_eod_query(settings: Settings) -> str:
+    source = _source(settings, "derivatives_eod")
     return f"""
+        with latest_derivatives_date as (
+            select max(trade_date) as trade_date
+            from {source}
+            where trade_date <= ?
+        )
         select
-            contract_id,
-            instrument_id,
-            trade_date,
-            segment,
-            expiry_date,
-            strike_price,
-            option_type,
-            settlement_price,
-            open_interest,
-            oi_change,
-            contract_volume,
-            available_at
-        from {_source(settings, "derivatives_eod")}
-        where trade_date <= ?
+            d.contract_id,
+            d.instrument_id,
+            d.trade_date,
+            d.segment,
+            d.expiry_date,
+            d.strike_price,
+            d.option_type,
+            d.settlement_price,
+            d.open_interest,
+            d.oi_change,
+            d.contract_volume,
+            d.available_at
+        from {source} d
+        inner join latest_derivatives_date l
+            on d.trade_date = l.trade_date
     """
 
 

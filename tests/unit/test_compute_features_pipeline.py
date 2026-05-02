@@ -164,6 +164,88 @@ def test_compute_features_reads_daily_price_parquets_with_different_columns(
     assert result.outputs["feature_families"] == {"technical": 8}
 
 
+def test_compute_features_reads_only_latest_derivatives_date(tmp_path: Path) -> None:
+    db_path = tmp_path / "warehouse" / "test.duckdb"
+    db_path.parent.mkdir(parents=True)
+    with duckdb.connect(str(db_path)) as con:
+        con.execute(
+            """
+            create table derivatives_eod (
+                contract_id text,
+                instrument_id text,
+                trade_date date,
+                segment text,
+                expiry_date date,
+                strike_price decimal(18,4),
+                option_type text,
+                settlement_price decimal(18,4),
+                open_interest bigint,
+                oi_change bigint,
+                contract_volume bigint,
+                available_at timestamp
+            )
+            """
+        )
+        con.executemany(
+            "insert into derivatives_eod values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "OLD",
+                    "INS_1",
+                    "2026-04-28",
+                    "FUTSTK",
+                    "2026-04-30",
+                    0,
+                    None,
+                    100,
+                    100000,
+                    1000,
+                    50,
+                    "2026-04-28 17:00:00",
+                ),
+                (
+                    "NEW_CE",
+                    "INS_1",
+                    "2026-04-30",
+                    "OPTSTK",
+                    "2026-05-28",
+                    100,
+                    "CE",
+                    10,
+                    200000,
+                    2000,
+                    60,
+                    "2026-04-30 17:00:00",
+                ),
+                (
+                    "NEW_PE",
+                    "INS_1",
+                    "2026-04-30",
+                    "OPTSTK",
+                    "2026-05-28",
+                    100,
+                    "PE",
+                    11,
+                    250000,
+                    2500,
+                    70,
+                    "2026-04-30 17:00:00",
+                ),
+            ],
+        )
+    settings = _settings(tmp_path, db_path)
+
+    result = compute_features(
+        settings,
+        as_of_date=date(2026, 4, 30),
+        families=("derivatives",),
+    )
+
+    assert result.status == "success"
+    assert result.records_in == 2
+    assert result.outputs["feature_families"] == {"derivatives": 5}
+
+
 def _seed_source_tables(db_path: Path) -> None:
     with duckdb.connect(str(db_path)) as con:
         con.execute(
