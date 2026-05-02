@@ -2,6 +2,8 @@ from datetime import date
 from pathlib import Path
 
 import duckdb
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from india_equity_engine.core.schemas.contracts import NormalizedRecord
 from india_equity_engine.core.settings import Settings
@@ -101,6 +103,64 @@ def test_compute_features_reads_price_parquet_without_duckdb_view(tmp_path: Path
 
     assert result.status == "success"
     assert result.records_in == 4
+    assert result.outputs["feature_families"] == {"technical": 8}
+
+
+def test_compute_features_reads_daily_price_parquets_with_different_columns(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "warehouse" / "test.duckdb"
+    settings = _settings(tmp_path, db_path)
+    price_dir = settings.silver_root / "price_daily"
+    price_dir.mkdir(parents=True)
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "instrument_id": "INS_1",
+                    "trade_date": date(2026, 4, 24),
+                    "open_price": 99.0,
+                    "high_price": 101.0,
+                    "low_price": 98.0,
+                    "close_price": 100.0,
+                    "volume": 1000,
+                    "traded_value": 100000.0,
+                    "deliverable_qty": 500,
+                    "deliverable_pct": 50.0,
+                }
+            ]
+        ),
+        price_dir / "trade_date_20260424.parquet",
+    )
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "instrument_id": "INS_1",
+                    "trade_date": date(2026, 4, 29),
+                    "open_price": 105.0,
+                    "high_price": 107.0,
+                    "low_price": 104.0,
+                    "close_price": 106.0,
+                    "volume": 1100,
+                    "traded_value": 116600.0,
+                    "deliverable_qty": 550,
+                    "deliverable_pct": 51.0,
+                    "available_at": "2026-04-29 16:00:00",
+                }
+            ]
+        ),
+        price_dir / "trade_date_20260429.parquet",
+    )
+
+    result = compute_features(
+        settings,
+        as_of_date=date(2026, 4, 29),
+        families=("technical",),
+    )
+
+    assert result.status == "success"
+    assert result.records_in == 2
     assert result.outputs["feature_families"] == {"technical": 8}
 
 

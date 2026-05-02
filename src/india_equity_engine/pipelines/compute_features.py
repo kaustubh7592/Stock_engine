@@ -278,7 +278,7 @@ def _source(settings: Settings, table_name: str, layer: str = "silver") -> str:
 
 def _read_parquet_expr(path: Path) -> str:
     escaped = str(path).replace("'", "''")
-    return f"read_parquet('{escaped}')"
+    return f"read_parquet('{escaped}', union_by_name=true)"
 
 
 def _refresh_duckdb_views(settings: Settings, write_results: list[object]) -> list[str]:
