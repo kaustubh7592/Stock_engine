@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import date
+from pathlib import Path
 
 import duckdb
 
@@ -60,7 +61,7 @@ def compute_features(
     records: list[NormalizedRecord] = []
     records_in = 0
     if "technical" in requested_families:
-        price_rows = _query_rows(settings, _price_daily_query(), [resolved_as_of_date])
+        price_rows = _query_rows(settings, _price_daily_query(settings), [resolved_as_of_date])
         records_in += len(price_rows)
         if price_rows:
             records.extend(compute_technical_features(price_rows, resolved_as_of_date))
@@ -68,9 +69,15 @@ def compute_features(
             warnings.append("No price_daily rows found for technical features.")
 
     if "governance" in requested_families:
-        governance_rows = _query_rows(settings, _governance_events_query(), [resolved_as_of_date])
-        pledge_rows = _query_rows(settings, _pledge_disclosures_query(), [resolved_as_of_date])
-        insider_rows = _query_rows(settings, _insider_trades_query(), [resolved_as_of_date])
+        governance_rows = _query_rows(
+            settings, _governance_events_query(settings), [resolved_as_of_date]
+        )
+        pledge_rows = _query_rows(
+            settings, _pledge_disclosures_query(settings), [resolved_as_of_date]
+        )
+        insider_rows = _query_rows(
+            settings, _insider_trades_query(settings), [resolved_as_of_date]
+        )
         records_in += len(governance_rows) + len(pledge_rows) + len(insider_rows)
         if governance_rows or pledge_rows or insider_rows:
             records.extend(
@@ -85,8 +92,12 @@ def compute_features(
             warnings.append("No governance, pledge, or insider rows found for governance features.")
 
     if "fundamental" in requested_families:
-        shareholding_rows = _query_rows(settings, _shareholding_query(), [resolved_as_of_date])
-        financial_fact_rows = _query_rows(settings, _financial_facts_query(), [resolved_as_of_date])
+        shareholding_rows = _query_rows(
+            settings, _shareholding_query(settings), [resolved_as_of_date]
+        )
+        financial_fact_rows = _query_rows(
+            settings, _financial_facts_query(settings), [resolved_as_of_date]
+        )
         records_in += len(shareholding_rows) + len(financial_fact_rows)
         if shareholding_rows or financial_fact_rows:
             records.extend(
@@ -100,9 +111,13 @@ def compute_features(
             warnings.append("No shareholding_pattern or financial_facts rows found.")
 
     if "macro" in requested_families:
-        macro_rows = _query_rows(settings, _macro_series_query(), [resolved_as_of_date])
-        market_flow_rows = _query_rows(settings, _market_flows_query(), [resolved_as_of_date])
-        instrument_rows = _query_rows(settings, _instrument_ids_query(), [resolved_as_of_date])
+        macro_rows = _query_rows(settings, _macro_series_query(settings), [resolved_as_of_date])
+        market_flow_rows = _query_rows(
+            settings, _market_flows_query(settings), [resolved_as_of_date]
+        )
+        instrument_rows = _query_rows(
+            settings, _instrument_ids_query(settings), [resolved_as_of_date]
+        )
         instrument_ids = [
             str(row["instrument_id"]) for row in instrument_rows if row.get("instrument_id")
         ]
@@ -122,7 +137,9 @@ def compute_features(
             warnings.append("No instrument universe found for macro feature replication.")
 
     if "derivatives" in requested_families:
-        derivatives_rows = _query_rows(settings, _derivatives_eod_query(), [resolved_as_of_date])
+        derivatives_rows = _query_rows(
+            settings, _derivatives_eod_query(settings), [resolved_as_of_date]
+        )
         records_in += len(derivatives_rows)
         if derivatives_rows:
             records.extend(compute_derivatives_features(derivatives_rows, resolved_as_of_date))
@@ -130,8 +147,10 @@ def compute_features(
             warnings.append("No derivatives_eod rows found for derivatives features.")
 
     if "event" in requested_families:
-        event_signal_rows = _query_rows(settings, _event_signals_query(), [resolved_as_of_date])
-        instrument_rows = _query_rows(settings, _instrument_sector_query(), [])
+        event_signal_rows = _query_rows(
+            settings, _event_signals_query(settings), [resolved_as_of_date]
+        )
+        instrument_rows = _query_rows(settings, _instrument_sector_query(settings), [])
         records_in += len(event_signal_rows)
         if event_signal_rows and instrument_rows:
             records.extend(
@@ -143,8 +162,8 @@ def compute_features(
             warnings.append("No instruments with sector metadata found for event features.")
 
     if "peer" in requested_families:
-        peer_price_rows = _query_rows(settings, _price_daily_query(), [resolved_as_of_date])
-        instrument_rows = _query_rows(settings, _instrument_sector_query(), [])
+        peer_price_rows = _query_rows(settings, _price_daily_query(settings), [resolved_as_of_date])
+        instrument_rows = _query_rows(settings, _instrument_sector_query(settings), [])
         records_in += len(peer_price_rows)
         if peer_price_rows and instrument_rows:
             records.extend(
@@ -222,7 +241,7 @@ def _infer_as_of_date(settings: Settings, families: tuple[str, ...]) -> date | N
 
 
 def _max_dates(settings: Settings, table_name: str, column_name: str) -> list[date | None]:
-    query = f"select max({column_name}) as max_date from {table_name}"
+    query = f"select max({column_name}) as max_date from {_source(settings, table_name)}"
     rows = _query_rows(settings, query, [])
     return [date_or_none(row.get("max_date")) for row in rows]
 
@@ -232,16 +251,34 @@ def _query_rows(
     query: str,
     params: list[object],
 ) -> list[dict[str, object]]:
-    if not settings.duckdb_path.exists():
-        return []
     try:
-        with duckdb.connect(str(settings.duckdb_path), read_only=True) as con:
+        if settings.duckdb_path.exists():
+            con = duckdb.connect(str(settings.duckdb_path), read_only=True)
+        else:
+            con = duckdb.connect()
+        with con:
             result = con.execute(query, params)
             columns = [column[0] for column in result.description]
             rows = result.fetchall()
     except duckdb.Error:
         return []
     return [dict(zip(columns, row, strict=True)) for row in rows]
+
+
+def _source(settings: Settings, table_name: str, layer: str = "silver") -> str:
+    root = settings.gold_root if layer == "gold" else settings.silver_root
+    current = root / table_name / "current.parquet"
+    if current.exists():
+        return _read_parquet_expr(current)
+    table_dir = current.parent
+    if table_dir.exists() and any(table_dir.glob("*.parquet")):
+        return _read_parquet_expr(table_dir / "*.parquet")
+    return table_name
+
+
+def _read_parquet_expr(path: Path) -> str:
+    escaped = str(path).replace("'", "''")
+    return f"read_parquet('{escaped}')"
 
 
 def _refresh_duckdb_views(settings: Settings, write_results: list[object]) -> list[str]:
@@ -256,8 +293,8 @@ def _refresh_duckdb_views(settings: Settings, write_results: list[object]) -> li
     return warnings
 
 
-def _price_daily_query() -> str:
-    return """
+def _price_daily_query(settings: Settings) -> str:
+    return f"""
         select
             instrument_id,
             trade_date,
@@ -270,14 +307,14 @@ def _price_daily_query() -> str:
             deliverable_qty,
             deliverable_pct,
             available_at
-        from price_daily
+        from {_source(settings, "price_daily")}
         where trade_date <= ?
         order by instrument_id, trade_date
     """
 
 
-def _governance_events_query() -> str:
-    return """
+def _governance_events_query(settings: Settings) -> str:
+    return f"""
         select
             instrument_id,
             event_date,
@@ -285,39 +322,39 @@ def _governance_events_query() -> str:
             severity,
             risk_flag,
             available_at
-        from governance_events
+        from {_source(settings, "governance_events")}
         where event_date <= ?
     """
 
 
-def _pledge_disclosures_query() -> str:
-    return """
+def _pledge_disclosures_query(settings: Settings) -> str:
+    return f"""
         select
             instrument_id,
             period_end,
             pledged_pct_promoter_holding,
             pledged_pct_total_equity,
             available_at
-        from pledge_disclosures
+        from {_source(settings, "pledge_disclosures")}
         where period_end <= ?
     """
 
 
-def _insider_trades_query() -> str:
-    return """
+def _insider_trades_query(settings: Settings) -> str:
+    return f"""
         select
             instrument_id,
             transaction_date,
             transaction_type,
             value_num,
             available_at
-        from insider_trades
+        from {_source(settings, "insider_trades")}
         where transaction_date <= ?
     """
 
 
-def _shareholding_query() -> str:
-    return """
+def _shareholding_query(settings: Settings) -> str:
+    return f"""
         select
             instrument_id,
             period_end,
@@ -329,13 +366,13 @@ def _shareholding_query() -> str:
             other_pct,
             share_count,
             available_at
-        from shareholding_pattern
+        from {_source(settings, "shareholding_pattern")}
         where period_end <= ?
     """
 
 
-def _financial_facts_query() -> str:
-    return """
+def _financial_facts_query(settings: Settings) -> str:
+    return f"""
         select
             instrument_id,
             concept_name,
@@ -345,14 +382,14 @@ def _financial_facts_query() -> str:
             value_num,
             document_hash,
             available_at
-        from financial_facts
+        from {_source(settings, "financial_facts")}
         where period_end <= ?
           and value_num is not null
     """
 
 
-def _macro_series_query() -> str:
-    return """
+def _macro_series_query(settings: Settings) -> str:
+    return f"""
         select
             series_code,
             series_name,
@@ -367,14 +404,14 @@ def _macro_series_query() -> str:
             document_hash,
             parser_version,
             available_at
-        from macro_series
+        from {_source(settings, "macro_series")}
         where observation_date <= ?
           and value_num is not null
     """
 
 
-def _market_flows_query() -> str:
-    return """
+def _market_flows_query(settings: Settings) -> str:
+    return f"""
         select
             trade_date,
             flow_type,
@@ -385,32 +422,32 @@ def _market_flows_query() -> str:
             net_flow,
             notes,
             available_at
-        from market_flows
+        from {_source(settings, "market_flows")}
         where trade_date <= ?
     """
 
 
-def _instrument_ids_query() -> str:
-    return """
+def _instrument_ids_query(settings: Settings) -> str:
+    return f"""
         select distinct instrument_id
-        from price_daily
+        from {_source(settings, "price_daily")}
         where trade_date <= ?
     """
 
 
-def _instrument_sector_query() -> str:
-    return """
+def _instrument_sector_query(settings: Settings) -> str:
+    return f"""
         select
             instrument_id,
             sector_name,
             industry_name
-        from instruments
+        from {_source(settings, "instruments")}
         where instrument_id is not null
     """
 
 
-def _derivatives_eod_query() -> str:
-    return """
+def _derivatives_eod_query(settings: Settings) -> str:
+    return f"""
         select
             contract_id,
             instrument_id,
@@ -424,13 +461,13 @@ def _derivatives_eod_query() -> str:
             oi_change,
             contract_volume,
             available_at
-        from derivatives_eod
+        from {_source(settings, "derivatives_eod")}
         where trade_date <= ?
     """
 
 
-def _event_signals_query() -> str:
-    return """
+def _event_signals_query(settings: Settings) -> str:
+    return f"""
         select
             event_signal_id,
             news_id,
@@ -444,7 +481,7 @@ def _event_signals_query() -> str:
             exposure_channel,
             rationale_code,
             available_at
-        from event_signals
+        from {_source(settings, "event_signals")}
         where event_date <= ?
     """
 

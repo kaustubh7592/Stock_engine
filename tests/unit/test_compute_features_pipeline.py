@@ -1,9 +1,12 @@
+from datetime import date
 from pathlib import Path
 
 import duckdb
 
+from india_equity_engine.core.schemas.contracts import NormalizedRecord
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.pipelines.compute_features import compute_features
+from india_equity_engine.storage.parquet_store import ParquetStore
 
 
 def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
@@ -58,6 +61,47 @@ def test_compute_features_pipeline_writes_gold_snapshot(tmp_path: Path) -> None:
     assert by_name["derivatives_put_call_oi_ratio_latest"][2] is not None
     assert by_name["event_net_impact_30d"][2] is not None
     assert by_name["peer_return_5d_rank_pct"][3] is False
+
+
+def test_compute_features_reads_price_parquet_without_duckdb_view(tmp_path: Path) -> None:
+    db_path = tmp_path / "warehouse" / "test.duckdb"
+    settings = _settings(tmp_path, db_path)
+    records = []
+    for day, close in (
+        (date(2026, 4, 24), 100.0),
+        (date(2026, 4, 27), 102.0),
+        (date(2026, 4, 28), 104.0),
+        (date(2026, 4, 29), 106.0),
+    ):
+        records.append(
+            NormalizedRecord(
+                table_name="price_daily",
+                row={
+                    "instrument_id": "INS_1",
+                    "trade_date": day,
+                    "open_price": close - 1,
+                    "high_price": close + 1,
+                    "low_price": close - 2,
+                    "close_price": close,
+                    "volume": 1000,
+                    "traded_value": close * 1000,
+                    "deliverable_qty": 500,
+                    "deliverable_pct": 50.0,
+                    "available_at": "2026-04-29 16:00:00",
+                },
+            )
+        )
+    ParquetStore(settings.silver_root).write_current_records(records)
+
+    result = compute_features(
+        settings,
+        as_of_date=date(2026, 4, 29),
+        families=("technical",),
+    )
+
+    assert result.status == "success"
+    assert result.records_in == 4
+    assert result.outputs["feature_families"] == {"technical": 8}
 
 
 def _seed_source_tables(db_path: Path) -> None:
