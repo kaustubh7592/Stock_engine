@@ -106,6 +106,8 @@ def test_api_reads_snapshot_and_scores_from_parquet(tmp_path: Path) -> None:
     stock_response = client.get("/stocks/EXAMPLE", params={"as_of_date": "2026-04-28"})
     assert stock_response.status_code == 200
     assert stock_response.json()["instrument"]["instrument_id"] == "INS_1"
+    assert "summary" in stock_response.json()
+    assert stock_response.json()["summary"]["headline"]
 
     coverage_response = client.get("/coverage/EXAMPLE", params={"as_of_date": "2026-04-28"})
     assert coverage_response.status_code == 200

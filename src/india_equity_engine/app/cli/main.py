@@ -490,15 +490,23 @@ def stock_command(
         str | None,
         typer.Option(help="Optional snapshot date in YYYY-MM-DD format."),
     ] = None,
+    summary_only: Annotated[
+        bool,
+        typer.Option("--summary-only", help="Print only the plain-English stock summary."),
+    ] = False,
     config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
 ) -> None:
     """Show snapshot, scores, and coverage for one stock."""
 
     settings = Settings.load(config_dir)
     parsed_as_of_date = _parse_trade_date_option(as_of_date)
+    payload = stock_lookup(settings, symbol_or_id, as_of_date=parsed_as_of_date)
+    if summary_only:
+        typer.echo(_render_stock_summary(payload.get("summary") or payload))
+        return
     typer.echo(
         json.dumps(
-            stock_lookup(settings, symbol_or_id, as_of_date=parsed_as_of_date),
+            payload,
             indent=2,
         )
     )
@@ -921,6 +929,38 @@ def _parse_required_date(value: str, option_name: str) -> date:
     if parsed is None:
         raise typer.BadParameter(f"{option_name} is required.")
     return parsed
+
+
+def _render_stock_summary(summary: object) -> str:
+    if not isinstance(summary, dict):
+        return "No summary is available."
+    lines = [str(summary.get("headline") or "No summary is available.")]
+    as_of_date = summary.get("as_of_date")
+    if as_of_date:
+        lines.append(f"As of: {as_of_date}")
+    for sentence in summary.get("plain_english") or []:
+        lines.append(f"- {sentence}")
+    horizons = summary.get("horizon_views") or {}
+    if horizons:
+        lines.append("")
+        lines.append("Horizon views:")
+        for horizon in ("short", "medium", "long"):
+            view = horizons.get(horizon) or {}
+            if view:
+                lines.append(
+                    "- "
+                    f"{horizon}: {view.get('classification')} "
+                    f"(score={view.get('composite_score')}, "
+                    f"confidence={view.get('confidence_score')})"
+                )
+    available = summary.get("available_data") or []
+    missing = summary.get("missing_data") or []
+    if available:
+        lines.append("")
+        lines.append(f"Available data: {', '.join(str(item) for item in available)}")
+    if missing:
+        lines.append(f"Missing data: {', '.join(str(item) for item in missing)}")
+    return "\n".join(lines)
 
 
 def _run_and_echo(settings: Settings, func: Callable[[], JobRunResult]) -> None:

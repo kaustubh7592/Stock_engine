@@ -25,13 +25,89 @@ def stock_lookup(
         return {"found": False, "query": symbol_or_id}
     snapshot = _snapshot(settings, resolved["instrument_id"], as_of_date)
     scores = _scores(settings, resolved["instrument_id"], as_of_date)
+    coverage = coverage_diagnostics(settings, symbol_or_id, as_of_date=as_of_date)
     return {
         "found": True,
         "query": symbol_or_id,
         "instrument": resolved,
+        "summary": stock_summary(resolved, snapshot, scores, coverage),
         "snapshot": snapshot,
         "scores": scores,
-        "coverage": coverage_diagnostics(settings, symbol_or_id, as_of_date=as_of_date),
+        "coverage": coverage,
+    }
+
+
+def stock_summary(
+    instrument: dict[str, Any],
+    snapshot: dict[str, Any] | None,
+    scores: list[dict[str, Any]],
+    coverage: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a concise plain-English summary for a stock lookup payload."""
+
+    name = _instrument_name(instrument, snapshot)
+    as_of_date = (
+        (snapshot or {}).get("snapshot_meta", {}).get("as_of_date")
+        or coverage.get("as_of_date")
+    )
+    if snapshot is None:
+        return {
+            "headline": f"No stock snapshot is available for {name}.",
+            "as_of_date": as_of_date,
+            "plain_english": [
+                "The stock was found, but the engine has not built a score snapshot for this date.",
+                (
+                    "Run compute-features, score-snapshots, and build-stock-snapshots "
+                    "for the target date."
+                ),
+            ],
+            "available_data": _available_components(coverage),
+            "missing_data": _missing_components(coverage),
+        }
+
+    decision = snapshot.get("decision") or {}
+    snapshot_scores = snapshot.get("scores") or {}
+    primary_horizon = str(decision.get("primary_horizon") or "short")
+    primary_score = snapshot_scores.get(primary_horizon) or {}
+    stance = str(decision.get("stance") or "unknown")
+    classification = str(primary_score.get("classification") or "unknown")
+    composite = _round_or_none(primary_score.get("composite"))
+    confidence = _round_or_none(primary_score.get("confidence"))
+    components = _component_scores(primary_score)
+    positives = [str(item) for item in decision.get("top_positive_drivers") or []]
+    negatives = [str(item) for item in decision.get("top_negative_drivers") or []]
+    missing = _missing_components(coverage)
+    available = _available_components(coverage)
+    horizon_views = _horizon_views(snapshot_scores)
+    plain_english = [
+        _plain_view_sentence(name, primary_horizon, classification, stance, composite, confidence),
+        _plain_evidence_sentence(available, missing),
+    ]
+    if positives:
+        plain_english.append(f"What supports the view: {', '.join(positives[:4])}.")
+    if negatives:
+        plain_english.append(f"What works against it: {', '.join(negatives[:4])}.")
+    if missing:
+        plain_english.append(
+            "This is still incomplete for serious long-term analysis because "
+            f"{', '.join(missing[:6])} data is missing."
+        )
+
+    return {
+        "headline": _headline(name, primary_horizon, classification, stance),
+        "as_of_date": as_of_date,
+        "primary_horizon": primary_horizon,
+        "stance": stance,
+        "classification": classification,
+        "composite_score": composite,
+        "confidence_score": confidence,
+        "horizon_views": horizon_views,
+        "component_scores": components,
+        "available_data": available,
+        "missing_data": missing,
+        "key_positive_drivers": positives[:5],
+        "key_negative_drivers": negatives[:5],
+        "plain_english": plain_english,
     }
 
 
@@ -336,6 +412,105 @@ def _peer_coverage(families: dict[str, Any]) -> dict[str, Any]:
         "covered_features": peer.get("covered_features", 0),
         "total_features": peer.get("total_features", 0),
     }
+
+
+def _instrument_name(instrument: dict[str, Any], snapshot: dict[str, Any] | None) -> str:
+    snapshot_instrument = (snapshot or {}).get("instrument") or {}
+    return str(
+        snapshot_instrument.get("name")
+        or instrument.get("legal_name")
+        or instrument.get("issuer_name")
+        or instrument.get("symbol")
+        or instrument.get("instrument_id")
+        or "stock"
+    )
+
+
+def _headline(name: str, horizon: str, classification: str, stance: str) -> str:
+    if classification == "abstain":
+        return f"{name}: the engine abstains for the {horizon}-term view."
+    return f"{name}: {horizon}-term view is {classification} ({stance})."
+
+
+def _plain_view_sentence(
+    name: str,
+    horizon: str,
+    classification: str,
+    stance: str,
+    composite: float | None,
+    confidence: float | None,
+) -> str:
+    score_text = "unknown score" if composite is None else f"score {composite}"
+    confidence_text = "unknown confidence" if confidence is None else f"confidence {confidence}"
+    if classification == "abstain":
+        return (
+            f"For {name}, the engine abstains on the {horizon}-term view "
+            f"with {score_text} and {confidence_text}."
+        )
+    return (
+        f"For {name}, the engine's {horizon}-term view is {classification} "
+        f"({stance}) with {score_text} and {confidence_text}."
+    )
+
+
+def _plain_evidence_sentence(available: list[str], missing: list[str]) -> str:
+    if available and missing:
+        return (
+            f"The view is mainly based on {', '.join(available)} data; "
+            f"{', '.join(missing)} data is still missing."
+        )
+    if available:
+        return f"The view is based on available {', '.join(available)} data."
+    return "The engine has very limited supporting data for this stock/date."
+
+
+def _horizon_views(scores: dict[str, Any]) -> dict[str, dict[str, float | str | None]]:
+    output = {}
+    for horizon in ("short", "medium", "long"):
+        score = scores.get(horizon) or {}
+        output[horizon] = {
+            "classification": score.get("classification"),
+            "composite_score": _round_or_none(score.get("composite")),
+            "confidence_score": _round_or_none(score.get("confidence")),
+        }
+    return output
+
+
+def _component_scores(score: dict[str, Any]) -> dict[str, float | None]:
+    return {
+        component: _round_or_none(score.get(source_key))
+        for component, source_key in (
+            ("technical", "technical"),
+            ("fundamental", "fundamental"),
+            ("governance", "governance"),
+            ("macro", "macro"),
+            ("event", "events"),
+            ("derivatives", "derivatives"),
+            ("peer", "peer"),
+        )
+    }
+
+
+def _available_components(coverage: dict[str, Any]) -> list[str]:
+    components = coverage.get("components") or {}
+    return [name for name, payload in components.items() if (payload or {}).get("ok") is True]
+
+
+def _missing_components(coverage: dict[str, Any]) -> list[str]:
+    score_missing = coverage.get("score_missing_components") or []
+    if score_missing:
+        return [str(component) for component in score_missing]
+    components = coverage.get("components") or {}
+    return [name for name, payload in components.items() if (payload or {}).get("ok") is not True]
+
+
+def _round_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return round(float(value), 4)
+    except (TypeError, ValueError):
+        return None
 
 
 def _count_latest(
