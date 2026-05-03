@@ -222,12 +222,13 @@ def ingest_disclosures_command(
 
 @app.command("ingest-filings")
 def ingest_filings_command(
+    symbol: Annotated[str | None, typer.Option(help="Optional NSE symbol filter.")] = None,
     config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
 ) -> None:
     """Run the filing discovery ingestion pipeline."""
 
     settings = Settings.load(config_dir)
-    _run_and_echo(settings, lambda: ingest_filings(settings))
+    _run_and_echo(settings, lambda: ingest_filings(settings, symbol=symbol))
 
 
 @app.command("ingest-insider-trades")
@@ -344,6 +345,10 @@ def download_filings_command(
         str | None,
         typer.Option(help="Optional filing family filter, for example shareholding."),
     ] = None,
+    symbol: Annotated[
+        str | None,
+        typer.Option(help="Optional NSE symbol, ISIN, or instrument id filter."),
+    ] = None,
     limit: Annotated[int, typer.Option(help="Maximum number of filings to download.")] = 25,
     config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
 ) -> None:
@@ -359,6 +364,7 @@ def download_filings_command(
             settings,
             document_types=parsed_types,
             filing_family=filing_family,
+            symbol_or_id=symbol,
             limit=limit,
         ),
     )
@@ -370,6 +376,10 @@ def parse_financial_facts_command(
         int,
         typer.Option(help="Maximum number of successful artifacts to parse."),
     ] = 25,
+    symbol: Annotated[
+        str | None,
+        typer.Option(help="Optional NSE symbol, ISIN, or instrument id filter."),
+    ] = None,
     config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
 ) -> None:
     """Parse downloaded XBRL/XML filing artifacts into financial facts."""
@@ -377,12 +387,19 @@ def parse_financial_facts_command(
     settings = Settings.load(config_dir)
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
-    _run_and_echo(settings, lambda: parse_financial_facts(settings, limit=limit))
+    _run_and_echo(
+        settings,
+        lambda: parse_financial_facts(settings, limit=limit, symbol_or_id=symbol),
+    )
 
 
 @app.command("parse-shareholding-pattern")
 def parse_shareholding_pattern_command(
     limit: Annotated[int, typer.Option(help="Maximum number of candidate facts to scan.")] = 5000,
+    symbol: Annotated[
+        str | None,
+        typer.Option(help="Optional NSE symbol, ISIN, or instrument id filter."),
+    ] = None,
     config_dir: Annotated[str, typer.Option(help="Configuration directory.")] = "configs",
 ) -> None:
     """Parse shareholding pattern rows from financial facts."""
@@ -390,7 +407,10 @@ def parse_shareholding_pattern_command(
     settings = Settings.load(config_dir)
     if limit < 1:
         raise typer.BadParameter("Limit must be at least 1.")
-    _run_and_echo(settings, lambda: parse_shareholding_pattern(settings, limit=limit))
+    _run_and_echo(
+        settings,
+        lambda: parse_shareholding_pattern(settings, limit=limit, symbol_or_id=symbol),
+    )
 
 
 @app.command("parse-pledge-disclosures")

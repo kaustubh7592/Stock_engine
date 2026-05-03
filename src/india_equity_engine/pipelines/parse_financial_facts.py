@@ -15,6 +15,7 @@ from india_equity_engine.connectors.xbrl.facts import (
 from india_equity_engine.core.schemas.contracts import JobRunResult, NormalizedRecord
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.core.time_utils import utc_now
+from india_equity_engine.pipelines.stock_lookup import resolve_instrument
 from india_equity_engine.storage.duckdb_store import DuckDBStore
 from india_equity_engine.storage.parquet_store import ParquetStore
 
@@ -33,17 +34,24 @@ class FinancialFactArtifact:
     source: str | None
 
 
-def parse_financial_facts(settings: Settings, limit: int = 25) -> JobRunResult:
+def parse_financial_facts(
+    settings: Settings,
+    limit: int = 25,
+    symbol_or_id: str | None = None,
+) -> JobRunResult:
     """Parse successful filing artifacts into the canonical financial_facts table."""
 
     settings.ensure_runtime_dirs()
-    artifacts = _load_artifacts(settings, limit)
+    target_instrument_id = _resolve_target_instrument_id(settings, symbol_or_id)
+    artifacts = _load_artifacts(settings, limit, target_instrument_id)
     if not artifacts:
+        target_text = f" for {symbol_or_id}" if symbol_or_id else ""
         return JobRunResult(
             job_name="parse_financial_facts",
             status="failed",
             warnings=[
-                "No successful XBRL/XML filing artifacts found. Run iee download-filings first."
+                "No successful XBRL/XML filing artifacts found"
+                f"{target_text}. Run iee download-filings first."
             ],
         )
 
@@ -80,6 +88,8 @@ def parse_financial_facts(settings: Settings, limit: int = 25) -> JobRunResult:
         warnings=warnings,
         outputs={
             "tables": {"financial_facts": len(records)},
+            "symbol_or_id": symbol_or_id,
+            "target_instrument_id": target_instrument_id,
             "instrument_count": instrument_count,
             "concept_count": concept_count,
             "parquet_outputs": [str(result.path) for result in write_results if result.path],
@@ -88,11 +98,19 @@ def parse_financial_facts(settings: Settings, limit: int = 25) -> JobRunResult:
     )
 
 
-def _load_artifacts(settings: Settings, limit: int) -> list[FinancialFactArtifact]:
+def _load_artifacts(
+    settings: Settings,
+    limit: int,
+    instrument_id: str | None = None,
+) -> list[FinancialFactArtifact]:
     if not settings.duckdb_path.exists() or limit < 1:
         return []
 
-    query = """
+    instrument_clause = "and instrument_id = ?" if instrument_id else ""
+    params: list[object] = []
+    if instrument_id:
+        params.append(instrument_id)
+    query = f"""
         select
             artifact_id,
             filing_id,
@@ -108,12 +126,14 @@ def _load_artifacts(settings: Settings, limit: int) -> list[FinancialFactArtifac
         where download_status = 'success'
           and local_path is not null
           and upper(document_type) in ('XBRL', 'XML', 'ZIP')
+          {instrument_clause}
         order by available_at desc nulls last, filing_id, artifact_id
         limit ?
     """
+    params.append(limit)
     try:
         with duckdb.connect(str(settings.duckdb_path), read_only=True) as con:
-            rows = con.execute(query, [limit]).fetchall()
+            rows = con.execute(query, params).fetchall()
     except duckdb.Error:
         return []
 
@@ -132,6 +152,15 @@ def _load_artifacts(settings: Settings, limit: int) -> list[FinancialFactArtifac
         )
         for row in rows
     ]
+
+
+def _resolve_target_instrument_id(settings: Settings, symbol_or_id: str | None) -> str | None:
+    if not symbol_or_id:
+        return None
+    resolved = resolve_instrument(settings, symbol_or_id)
+    if resolved:
+        return str(resolved["instrument_id"])
+    return symbol_or_id.strip()
 
 
 def _parse_artifact(

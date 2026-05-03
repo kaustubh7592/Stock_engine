@@ -1,9 +1,13 @@
 from pathlib import Path
 
+import duckdb
+
+from india_equity_engine.core.settings import Settings
 from india_equity_engine.pipelines.download_filings import (
     FilingDownloadCandidate,
     _extension_for,
     _failed_row,
+    _load_candidates,
     _looks_like_html_error,
     _normalize_document_types,
     _success_row,
@@ -58,3 +62,74 @@ def test_success_and_failure_rows_preserve_manifest_fields() -> None:
     assert failure["download_status"] == "failed"
     assert failure["metadata_path"] is None
     assert failure["error_text"] == "timeout"
+
+
+def test_load_candidates_can_filter_to_one_instrument(tmp_path: Path) -> None:
+    db_path = tmp_path / "warehouse" / "test.duckdb"
+    db_path.parent.mkdir(parents=True)
+    with duckdb.connect(str(db_path)) as con:
+        con.execute(
+            """
+            create table filings (
+                filing_id text,
+                instrument_id text,
+                exchange_code text,
+                filing_family text,
+                filing_date date,
+                document_type text,
+                document_url text,
+                xbrl_flag boolean
+            )
+            """
+        )
+        con.executemany(
+            "insert into filings values (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "filing_hdfc",
+                    "INS_HDFC",
+                    "NSE",
+                    "shareholding",
+                    "2026-04-30",
+                    "XBRL",
+                    "https://nsearchives.nseindia.com/hdfc.xml",
+                    True,
+                ),
+                (
+                    "filing_other",
+                    "INS_OTHER",
+                    "NSE",
+                    "shareholding",
+                    "2026-04-30",
+                    "XBRL",
+                    "https://nsearchives.nseindia.com/other.xml",
+                    True,
+                ),
+            ],
+        )
+    settings = Settings(
+        config_dir=Path("configs").resolve(),
+        data_root=tmp_path / "data",
+        raw_root=tmp_path / "data" / "raw",
+        silver_root=tmp_path / "data" / "silver",
+        gold_root=tmp_path / "data" / "gold",
+        cache_root=tmp_path / "data" / "cache",
+        logs_root=tmp_path / "data" / "logs",
+        duckdb_path=db_path,
+        http_timeout_seconds=30,
+        user_agent="test",
+        use_system_cert_store=True,
+        http_trust_env=False,
+        ca_bundle=None,
+        parser_version="test",
+    )
+
+    candidates = _load_candidates(
+        settings,
+        ("XBRL",),
+        "shareholding",
+        "INS_HDFC",
+        10,
+    )
+
+    assert [candidate.filing_id for candidate in candidates] == ["filing_hdfc"]

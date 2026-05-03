@@ -15,10 +15,11 @@ from india_equity_engine.storage.parquet_store import ParquetStore
 from india_equity_engine.storage.registry import SourceRegistry
 
 
-def ingest_filings(settings: Settings) -> JobRunResult:
+def ingest_filings(settings: Settings, symbol: str | None = None) -> JobRunResult:
     """Discover filing/document metadata from official NSE surfaces."""
 
     settings.ensure_runtime_dirs()
+    normalized_symbol = symbol.strip().upper() if symbol else None
     registry = SourceRegistry(settings.config_dir)
     connector = NSEFilingDiscoveryConnector(
         source=registry.get("S09"),
@@ -50,6 +51,8 @@ def ingest_filings(settings: Settings) -> JobRunResult:
         records_in += len(parsed)
         source_records = connector.normalize(parsed, artifact)
         source_records = _resolve_filings(source_records, _load_nse_resolution_maps(settings))
+        if normalized_symbol:
+            source_records = _filter_symbol(source_records, normalized_symbol)
         source_records = _with_lineage(
             source_records,
             raw_record.sha256,
@@ -82,6 +85,7 @@ def ingest_filings(settings: Settings) -> JobRunResult:
         records_out=len(normalized),
         warnings=warnings,
         outputs={
+            "symbol": normalized_symbol,
             "raw_artifacts": [str(record.path) for record in raw_records],
             "document_hashes": {record.logical_name: record.sha256 for record in raw_records},
             "tables": {"filings": len(normalized)},
@@ -94,6 +98,15 @@ def ingest_filings(settings: Settings) -> JobRunResult:
             "duckdb_path": str(settings.duckdb_path),
         },
     )
+
+
+def _filter_symbol(records: list[NormalizedRecord], symbol: str) -> list[NormalizedRecord]:
+    return [
+        record
+        for record in records
+        if str(record.row.get("__nse_symbol") or "").upper() == symbol
+        or str(record.row.get("instrument_id") or "").upper() == symbol
+    ]
 
 
 def _load_nse_resolution_maps(settings: Settings) -> dict[str, dict[str, str]]:

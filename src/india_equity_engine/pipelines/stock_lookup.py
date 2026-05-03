@@ -129,15 +129,6 @@ def coverage_diagnostics(
     feature_rows = _feature_rows(settings, instrument_id, resolved_as_of)
     score_rows = _scores(settings, instrument_id, resolved_as_of)
     families = _family_summary(feature_rows)
-    components = {
-        "technical": _technical_coverage(settings, instrument_id),
-        "fundamental": _fundamental_coverage(settings, instrument_id),
-        "governance": _governance_coverage(settings, instrument_id),
-        "macro": _macro_coverage(settings),
-        "event": _event_coverage(settings, resolved),
-        "derivatives": _derivatives_coverage(settings, instrument_id),
-        "peer": _peer_coverage(families),
-    }
     score_missing = sorted(
         {
             component
@@ -145,6 +136,15 @@ def coverage_diagnostics(
             for component in _json_list(row.get("missing_components_json"))
         }
     )
+    components = {
+        "technical": _technical_coverage(settings, instrument_id),
+        "fundamental": _fundamental_coverage(settings, instrument_id),
+        "governance": _governance_coverage(settings, instrument_id),
+        "macro": _macro_coverage(settings),
+        "event": _event_coverage(settings, resolved),
+        "derivatives": _derivatives_coverage(settings, instrument_id, families, score_missing),
+        "peer": _peer_coverage(families),
+    }
     return {
         "found": True,
         "query": symbol_or_id,
@@ -292,8 +292,13 @@ def _technical_coverage(settings: Settings, instrument_id: str) -> dict[str, Any
     )
 
 
-def _derivatives_coverage(settings: Settings, instrument_id: str) -> dict[str, Any]:
-    return _count_latest(
+def _derivatives_coverage(
+    settings: Settings,
+    instrument_id: str,
+    families: dict[str, Any],
+    score_missing: list[str],
+) -> dict[str, Any]:
+    coverage = _count_latest(
         settings,
         "derivatives_eod",
         "silver",
@@ -302,6 +307,18 @@ def _derivatives_coverage(settings: Settings, instrument_id: str) -> dict[str, A
         [instrument_id],
         enough_threshold=1,
     )
+    feature_family = families.get("derivatives", {})
+    coverage["feature_snapshot"] = {
+        "total_features": feature_family.get("total_features", 0),
+        "covered_features": feature_family.get("covered_features", 0),
+    }
+    if coverage["ok"] and not feature_family.get("total_features", 0):
+        coverage["diagnostic"] = "raw derivatives found, but no derivative features were generated."
+    elif coverage["ok"] and "derivatives" in score_missing:
+        coverage["diagnostic"] = (
+            "raw derivatives found, but derivative features did not produce scored evidence."
+        )
+    return coverage
 
 
 def _fundamental_coverage(settings: Settings, instrument_id: str) -> dict[str, Any]:

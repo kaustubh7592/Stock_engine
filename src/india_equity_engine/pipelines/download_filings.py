@@ -20,6 +20,7 @@ from india_equity_engine.core.schemas.contracts import (
 )
 from india_equity_engine.core.settings import Settings
 from india_equity_engine.core.time_utils import utc_now
+from india_equity_engine.pipelines.stock_lookup import resolve_instrument
 from india_equity_engine.storage.duckdb_store import DuckDBStore
 from india_equity_engine.storage.local_fs import RawArtifactStore
 from india_equity_engine.storage.parquet_store import ParquetStore
@@ -38,6 +39,7 @@ def download_filings(
     settings: Settings,
     document_types: tuple[str, ...] = ("XBRL", "XML", "ZIP"),
     filing_family: str | None = None,
+    symbol_or_id: str | None = None,
     limit: int = 25,
 ) -> JobRunResult:
     """Download selected filing artifacts, prioritizing structured documents."""
@@ -45,12 +47,20 @@ def download_filings(
     settings.ensure_runtime_dirs()
     normalized_types = _normalize_document_types(document_types)
     normalized_family = filing_family.strip().lower() if filing_family else None
-    candidates = _load_candidates(settings, normalized_types, normalized_family, limit)
+    target_instrument_id = _resolve_target_instrument_id(settings, symbol_or_id)
+    candidates = _load_candidates(
+        settings,
+        normalized_types,
+        normalized_family,
+        target_instrument_id,
+        limit,
+    )
     if not candidates:
+        target_text = f" for {symbol_or_id}" if symbol_or_id else ""
         return JobRunResult(
             job_name="download_filings",
             status="failed",
-            warnings=["No filing candidates found. Run iee ingest-filings first."],
+            warnings=[f"No filing candidates found{target_text}. Run iee ingest-filings first."],
         )
 
     store = RawArtifactStore(settings.raw_root, settings.parser_version)
@@ -98,6 +108,8 @@ def download_filings(
         outputs={
             "document_types": list(normalized_types),
             "filing_family": normalized_family,
+            "symbol_or_id": symbol_or_id,
+            "target_instrument_id": target_instrument_id,
             "success_count": success_count,
             "failure_count": len(records) - success_count,
             "tables": {"filing_artifacts": len(records)},
@@ -111,6 +123,7 @@ def _load_candidates(
     settings: Settings,
     document_types: tuple[str, ...],
     filing_family: str | None,
+    instrument_id: str | None,
     limit: int,
 ) -> list[FilingDownloadCandidate]:
     if not settings.duckdb_path.exists():
@@ -122,9 +135,13 @@ def _load_candidates(
     order_clause = "xbrl_flag desc, filing_date desc nulls last, filing_id"
     params: list[object] = []
     family_clause = ""
+    instrument_clause = ""
     if filing_family:
         family_clause = "and lower(filing_family) = ?"
         params.append(filing_family)
+    if instrument_id:
+        instrument_clause = "and instrument_id = ?"
+        params.append(instrument_id)
     if "ALL" not in document_types:
         placeholders = ", ".join(["?"] * len(document_types))
         filter_clause = f"and upper(document_type) in ({placeholders})"
@@ -144,6 +161,7 @@ def _load_candidates(
         from filings
         where document_url is not null
           {family_clause}
+          {instrument_clause}
           {filter_clause}
         order by {order_clause}
         limit ?
@@ -166,6 +184,15 @@ def _load_candidates(
         )
         for row in rows
     ]
+
+
+def _resolve_target_instrument_id(settings: Settings, symbol_or_id: str | None) -> str | None:
+    if not symbol_or_id:
+        return None
+    resolved = resolve_instrument(settings, symbol_or_id)
+    if resolved:
+        return str(resolved["instrument_id"])
+    return symbol_or_id.strip()
 
 
 def _download_candidate(

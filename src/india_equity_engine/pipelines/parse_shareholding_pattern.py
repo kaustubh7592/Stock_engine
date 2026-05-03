@@ -12,20 +12,29 @@ from india_equity_engine.connectors.xbrl.shareholding import (
 )
 from india_equity_engine.core.schemas.contracts import JobRunResult, NormalizedRecord
 from india_equity_engine.core.settings import Settings
+from india_equity_engine.pipelines.stock_lookup import resolve_instrument
 from india_equity_engine.storage.duckdb_store import DuckDBStore
 from india_equity_engine.storage.parquet_store import ParquetStore
 
 
-def parse_shareholding_pattern(settings: Settings, limit: int = 5000) -> JobRunResult:
+def parse_shareholding_pattern(
+    settings: Settings,
+    limit: int = 5000,
+    symbol_or_id: str | None = None,
+) -> JobRunResult:
     """Parse canonical shareholding rows from financial_facts."""
 
     settings.ensure_runtime_dirs()
-    rows = _load_candidate_fact_rows(settings, limit)
+    target_instrument_id = _resolve_target_instrument_id(settings, symbol_or_id)
+    rows = _load_candidate_fact_rows(settings, limit, target_instrument_id)
     if not rows:
+        target_text = f" for {symbol_or_id}" if symbol_or_id else ""
         return JobRunResult(
             job_name="parse_shareholding_pattern",
             status="failed",
-            warnings=["No financial facts found. Run iee parse-financial-facts first."],
+            warnings=[
+                f"No financial facts found{target_text}. Run iee parse-financial-facts first."
+            ],
         )
 
     facts = [fact for row in rows if (fact := shareholding_fact_from_row(row)) is not None]
@@ -56,17 +65,27 @@ def parse_shareholding_pattern(settings: Settings, limit: int = 5000) -> JobRunR
         records_out=len(records),
         outputs={
             "tables": dict(counts),
+            "symbol_or_id": symbol_or_id,
+            "target_instrument_id": target_instrument_id,
             "parquet_outputs": [str(result.path) for result in write_results if result.path],
             "duckdb_path": str(settings.duckdb_path),
         },
     )
 
 
-def _load_candidate_fact_rows(settings: Settings, limit: int) -> list[dict[str, object]]:
+def _load_candidate_fact_rows(
+    settings: Settings,
+    limit: int,
+    instrument_id: str | None = None,
+) -> list[dict[str, object]]:
     if not settings.duckdb_path.exists() or limit < 1:
         return []
 
-    query = """
+    instrument_clause = "and instrument_id = ?" if instrument_id else ""
+    params: list[object] = []
+    if instrument_id:
+        params.append(instrument_id)
+    query = f"""
         select
             instrument_id,
             filing_id,
@@ -90,6 +109,7 @@ def _load_candidate_fact_rows(settings: Settings, limit: int) -> list[dict[str, 
             updated_at
         from financial_facts
         where concept_name is not null
+          {instrument_clause}
           and (
             contains(lower(concept_name), 'share')
             or contains(lower(concept_name), 'promoter')
@@ -110,14 +130,24 @@ def _load_candidate_fact_rows(settings: Settings, limit: int) -> list[dict[str, 
         order by available_at desc nulls last, filing_id, concept_name
         limit ?
     """
+    params.append(limit)
     try:
         with duckdb.connect(str(settings.duckdb_path), read_only=True) as con:
-            columns = [column[0] for column in con.execute(query, [limit]).description]
+            columns = [column[0] for column in con.execute(query, params).description]
             rows = con.fetchall()
     except duckdb.Error:
         return []
 
     return [dict(zip(columns, row, strict=True)) for row in rows]
+
+
+def _resolve_target_instrument_id(settings: Settings, symbol_or_id: str | None) -> str | None:
+    if not symbol_or_id:
+        return None
+    resolved = resolve_instrument(settings, symbol_or_id)
+    if resolved:
+        return str(resolved["instrument_id"])
+    return symbol_or_id.strip()
 
 
 def _dedupe_records(records: list[NormalizedRecord]) -> list[NormalizedRecord]:
