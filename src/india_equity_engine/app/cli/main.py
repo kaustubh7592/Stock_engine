@@ -954,12 +954,17 @@ def _render_stock_summary(summary: object) -> str:
                     f"confidence={view.get('confidence_score')})"
                 )
     available = summary.get("available_data") or []
+    raw_available = summary.get("raw_data_available") or []
     missing = summary.get("missing_data") or []
     if available:
         lines.append("")
-        lines.append(f"Available data: {', '.join(str(item) for item in available)}")
+        lines.append(f"Scored evidence: {', '.join(str(item) for item in available)}")
+    if raw_available:
+        if not available:
+            lines.append("")
+        lines.append(f"Raw data available: {', '.join(str(item) for item in raw_available)}")
     if missing:
-        lines.append(f"Missing data: {', '.join(str(item) for item in missing)}")
+        lines.append(f"Missing scored evidence: {', '.join(str(item) for item in missing)}")
     return "\n".join(lines)
 
 

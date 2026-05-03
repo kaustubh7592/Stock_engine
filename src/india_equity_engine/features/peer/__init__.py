@@ -17,10 +17,10 @@ def compute_peer_features(
     instrument_rows: list[dict[str, object]],
     as_of_date: date,
 ) -> list[NormalizedRecord]:
-    """Compute sector-relative ranks where enough valid peers exist."""
+    """Compute sector/industry-relative ranks where enough valid peers exist."""
 
-    sectors = {
-        str(row["instrument_id"]): _text(row.get("sector_name")) or "unknown"
+    peer_groups = {
+        str(row["instrument_id"]): _peer_group(row)
         for row in instrument_rows
         if row.get("instrument_id")
     }
@@ -32,14 +32,14 @@ def compute_peer_features(
             continue
         grouped_prices[instrument_id].append(row)
 
-    metrics_by_sector: dict[str, list[dict[str, object]]] = defaultdict(list)
+    metrics_by_group: dict[str, list[dict[str, object]]] = defaultdict(list)
     for instrument_id, rows in grouped_prices.items():
         rows.sort(key=lambda row: date_or_none(row.get("trade_date")) or date.min)
         closes = [decimal_or_none(row.get("close_price")) for row in rows]
         closes = [value for value in closes if value is not None]
         latest = rows[-1]
-        sector = sectors.get(instrument_id, "unknown")
-        metrics_by_sector[sector].append(
+        peer_group = peer_groups.get(instrument_id, "unknown")
+        metrics_by_group[peer_group].append(
             {
                 "instrument_id": instrument_id,
                 "return_5d": _return_pct(closes[-6], closes[-1]) if len(closes) >= 6 else None,
@@ -52,19 +52,25 @@ def compute_peer_features(
         )
 
     output = []
-    for sector, rows in metrics_by_sector.items():
+    for peer_group, rows in metrics_by_group.items():
         output.extend(
-            _rank_feature_rows(sector, rows, "return_5d", "peer_return_5d_rank_pct", as_of_date)
-        )
-        output.extend(
-            _rank_feature_rows(sector, rows, "return_20d", "peer_return_20d_rank_pct", as_of_date)
-        )
-        output.extend(
-            _rank_feature_rows(sector, rows, "liquidity", "peer_liquidity_rank_pct", as_of_date)
+            _rank_feature_rows(
+                peer_group, rows, "return_5d", "peer_return_5d_rank_pct", as_of_date
+            )
         )
         output.extend(
             _rank_feature_rows(
-                sector,
+                peer_group, rows, "return_20d", "peer_return_20d_rank_pct", as_of_date
+            )
+        )
+        output.extend(
+            _rank_feature_rows(
+                peer_group, rows, "liquidity", "peer_liquidity_rank_pct", as_of_date
+            )
+        )
+        output.extend(
+            _rank_feature_rows(
+                peer_group,
                 rows,
                 "delivery_pct",
                 "peer_delivery_pct_rank_pct",
@@ -74,15 +80,19 @@ def compute_peer_features(
     return output
 
 
+def _peer_group(row: dict[str, object]) -> str:
+    return _text(row.get("sector_name")) or _text(row.get("industry_name")) or "unknown"
+
+
 def _rank_feature_rows(
-    sector: str,
+    peer_group: str,
     rows: list[dict[str, object]],
     metric_name: str,
     feature_name: str,
     as_of_date: date,
 ) -> list[NormalizedRecord]:
     covered_rows = [row for row in rows if row.get(metric_name) is not None]
-    enough_peers = sector != "unknown" and len(covered_rows) >= MIN_PEERS
+    enough_peers = peer_group != "unknown" and len(covered_rows) >= MIN_PEERS
     rank_by_instrument = _rank_pct(covered_rows, metric_name) if enough_peers else {}
     output = []
     for row in rows:

@@ -23,7 +23,7 @@ def compute_event_features(
     """Map direct and sector-level event signals into instrument feature snapshots."""
 
     sector_map = {
-        str(row["instrument_id"]): _text(row.get("sector_name"))
+        str(row["instrument_id"]): _event_scope_terms(row)
         for row in instrument_rows
         if row.get("instrument_id")
     }
@@ -39,8 +39,9 @@ def compute_event_features(
         signal_sector = _text(row.get("sector_name"))
         if signal_sector is None:
             continue
-        for instrument_id, sector_name in sector_map.items():
-            if sector_name and sector_name.lower() == signal_sector.lower():
+        normalized_signal_sector = signal_sector.lower()
+        for instrument_id, scope_terms in sector_map.items():
+            if normalized_signal_sector in scope_terms:
                 rows_by_instrument[instrument_id].append(row)
 
     output = []
@@ -95,6 +96,31 @@ def compute_event_features(
     return output
 
 
+def _event_scope_terms(row: dict[str, object]) -> set[str]:
+    terms = {
+        normalized
+        for value in (row.get("sector_name"), row.get("industry_name"))
+        if (normalized := _normalized_text(value)) is not None
+    }
+    text = " ".join(
+        value
+        for value in (
+            _text(row.get("sector_name")),
+            _text(row.get("industry_name")),
+        )
+        if value
+    ).lower()
+    if "bank" in text or "financial service" in text:
+        terms.add("banks")
+    if "nbfc" in text or "financial service" in text:
+        terms.add("nbfc")
+    if "insurance" in text:
+        terms.add("insurance")
+    if "capital market" in text or "financial service" in text:
+        terms.add("capital markets")
+    return terms
+
+
 def _record(
     instrument_id: str,
     as_of_date: date,
@@ -136,3 +162,8 @@ def _text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _normalized_text(value: object) -> str | None:
+    text = _text(value)
+    return text.lower() if text else None

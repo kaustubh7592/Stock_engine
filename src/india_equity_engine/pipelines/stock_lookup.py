@@ -61,8 +61,8 @@ def stock_summary(
                     "for the target date."
                 ),
             ],
-            "available_data": _available_components(coverage),
-            "missing_data": _missing_components(coverage),
+            "available_data": _raw_available_components(coverage),
+            "missing_data": _raw_missing_components(coverage),
         }
 
     decision = snapshot.get("decision") or {}
@@ -77,11 +77,12 @@ def stock_summary(
     positives = [str(item) for item in decision.get("top_positive_drivers") or []]
     negatives = [str(item) for item in decision.get("top_negative_drivers") or []]
     missing = _missing_components(coverage)
-    available = _available_components(coverage)
+    raw_available = _raw_available_components(coverage)
     horizon_views = _horizon_views(snapshot_scores)
+    scored_available = _scored_components(components)
     plain_english = [
         _plain_view_sentence(name, primary_horizon, classification, stance, composite, confidence),
-        _plain_evidence_sentence(available, missing),
+        _plain_evidence_sentence(scored_available, raw_available, missing),
     ]
     if positives:
         plain_english.append(f"What supports the view: {', '.join(positives[:4])}.")
@@ -103,7 +104,8 @@ def stock_summary(
         "confidence_score": confidence,
         "horizon_views": horizon_views,
         "component_scores": components,
-        "available_data": available,
+        "available_data": scored_available,
+        "raw_data_available": raw_available,
         "missing_data": missing,
         "key_positive_drivers": positives[:5],
         "key_negative_drivers": negatives[:5],
@@ -387,13 +389,14 @@ def _macro_coverage(settings: Settings) -> dict[str, Any]:
 
 
 def _event_coverage(settings: Settings, instrument: dict[str, Any]) -> dict[str, Any]:
-    sector_name = instrument.get("sector_name")
     instrument_id = instrument.get("instrument_id")
     clause = "instrument_id = ?"
     params: list[object] = [instrument_id]
-    if sector_name:
-        clause = "(instrument_id = ? or upper(sector_name) = upper(?))"
-        params.append(sector_name)
+    event_scope_terms = _event_scope_terms(instrument)
+    if event_scope_terms:
+        placeholders = ", ".join("?" for _ in event_scope_terms)
+        clause = f"(instrument_id = ? or upper(sector_name) in ({placeholders}))"
+        params.extend(term.upper() for term in event_scope_terms)
     return _count_latest(
         settings,
         "event_signals",
@@ -403,6 +406,38 @@ def _event_coverage(settings: Settings, instrument: dict[str, Any]) -> dict[str,
         params,
         enough_threshold=1,
     )
+
+
+def _event_scope_terms(instrument: dict[str, Any]) -> list[str]:
+    terms = []
+    for value in (instrument.get("sector_name"), instrument.get("industry_name")):
+        text = _text_or_none(value)
+        if text and text not in terms:
+            terms.append(text)
+    profile_text = " ".join(
+        value
+        for value in (
+            _text_or_none(instrument.get("sector_name")),
+            _text_or_none(instrument.get("industry_name")),
+            _text_or_none(instrument.get("legal_name")),
+            _text_or_none(instrument.get("issuer_name")),
+            _text_or_none(instrument.get("symbol")),
+        )
+        if value
+    ).lower()
+    aliases = []
+    if "bank" in profile_text or "financial service" in profile_text:
+        aliases.append("Banks")
+    if "nbfc" in profile_text or "financial service" in profile_text:
+        aliases.append("NBFC")
+    if "insurance" in profile_text:
+        aliases.append("Insurance")
+    if "capital market" in profile_text or "financial service" in profile_text:
+        aliases.append("Capital Markets")
+    for alias in aliases:
+        if alias not in terms:
+            terms.append(alias)
+    return terms
 
 
 def _peer_coverage(families: dict[str, Any]) -> dict[str, Any]:
@@ -453,14 +488,27 @@ def _plain_view_sentence(
     )
 
 
-def _plain_evidence_sentence(available: list[str], missing: list[str]) -> str:
-    if available and missing:
+def _plain_evidence_sentence(
+    scored_available: list[str],
+    raw_available: list[str],
+    missing: list[str],
+) -> str:
+    if scored_available and missing:
+        raw_note = ""
+        raw_only = [component for component in raw_available if component not in scored_available]
+        if raw_only:
+            raw_note = f" Raw {', '.join(raw_only)} data exists but is not yet scoring this view."
         return (
-            f"The view is mainly based on {', '.join(available)} data; "
-            f"{', '.join(missing)} data is still missing."
+            f"The scored view is mainly based on {', '.join(scored_available)} data; "
+            f"{', '.join(missing)} scored evidence is still missing.{raw_note}"
         )
-    if available:
-        return f"The view is based on available {', '.join(available)} data."
+    if scored_available:
+        return f"The scored view is based on {', '.join(scored_available)} data."
+    if raw_available:
+        return (
+            f"Raw {', '.join(raw_available)} data exists, but the engine has very limited "
+            "scored evidence for this stock/date."
+        )
     return "The engine has very limited supporting data for this stock/date."
 
 
@@ -491,17 +539,25 @@ def _component_scores(score: dict[str, Any]) -> dict[str, float | None]:
     }
 
 
-def _available_components(coverage: dict[str, Any]) -> list[str]:
+def _scored_components(components: dict[str, float | None]) -> list[str]:
+    return [component for component, value in components.items() if value is not None]
+
+
+def _raw_available_components(coverage: dict[str, Any]) -> list[str]:
     components = coverage.get("components") or {}
     return [name for name, payload in components.items() if (payload or {}).get("ok") is True]
+
+
+def _raw_missing_components(coverage: dict[str, Any]) -> list[str]:
+    components = coverage.get("components") or {}
+    return [name for name, payload in components.items() if (payload or {}).get("ok") is not True]
 
 
 def _missing_components(coverage: dict[str, Any]) -> list[str]:
     score_missing = coverage.get("score_missing_components") or []
     if score_missing:
         return [str(component) for component in score_missing]
-    components = coverage.get("components") or {}
-    return [name for name, payload in components.items() if (payload or {}).get("ok") is not True]
+    return _raw_missing_components(coverage)
 
 
 def _round_or_none(value: object) -> float | None:
@@ -625,6 +681,13 @@ def _json_value(value: object) -> object:
     if hasattr(value, "as_tuple"):
         return float(value)
     return value
+
+
+def _text_or_none(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _json_list(value: object) -> list[str]:

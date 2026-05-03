@@ -236,9 +236,9 @@ def _derivatives_feature_score(row: dict[str, Any]) -> Decimal | None:
     if value is None:
         return None
     if name == "derivatives_open_interest_latest":
-        return None
+        return Decimal("0.50")
     if name == "derivatives_contract_volume_latest":
-        return None
+        return Decimal("0.50")
     if name == "derivatives_oi_change_latest":
         return _directional_score(value, Decimal("500000"))
     if name == "derivatives_oi_change_pct_latest":
